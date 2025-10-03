@@ -31,6 +31,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="DustyPig.API" Version="3.7.1.299" />
 		<PackageReference Include="DustyPig.OMDb" Version="1.0.0.5" />
 		<PackageReference Include="DustyPig.TMDB" Version="3.3.0.39" />

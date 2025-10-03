@@ -1,15 +1,44 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFrameworks>net8;net9</TargetFrameworks>
+		<Nullable>enable</Nullable>
 
-  <ItemGroup>
-    <PackageReference Include="DustyPig.API" Version="3.7.1.299" />
-    <PackageReference Include="DustyPig.OMDb" Version="1.0.0.5" />
-    <PackageReference Include="DustyPig.TMDB" Version="3.3.0.39" />
-    <PackageReference Include="DustyPig.TVDB" Version="4.7.9.19" />
-  </ItemGroup>
+		<LangVersion>Latest</LangVersion>
+		<NoWarn>$(NoWarn);1591,1570,1573</NoWarn>
+
+		<!-- Leave the revision as zero, it will be set by github actions -->
+		<Version>1.0.0.0</Version>
+
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<Authors>DustyPig.tv</Authors>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<Description>An opinionated library to collect metadata from OMDB, TMDB and TVDB for Dusty Pig</Description>
+		<Copyright>DustyPig.tv</Copyright>
+		<PackageProjectUrl>https://github.com/dustypigtv/DustyPig.MediaMetadata</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/dustypigtv/DustyPig.MediaMetadata.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="DustyPig.API" Version="3.7.1.299" />
+		<PackageReference Include="DustyPig.OMDb" Version="1.0.0.5" />
+		<PackageReference Include="DustyPig.TMDB" Version="3.3.0.39" />
+		<PackageReference Include="DustyPig.TVDB" Version="4.7.9.19" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
+		  <PrivateAssets>all</PrivateAssets>
+		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
 
 </Project>

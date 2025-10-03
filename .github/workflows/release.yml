@@ -1,0 +1,23 @@
+name: Release
+on:
+  workflow_dispatch
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with: 
+          dotnet-version: 9
+
+      - name: Build
+        run: |
+            sed -i "s/\(<Version>\([0-9]\+\.\)\{3\}\)\([0-9]\+\)/\1${{github.run_number}}/" "DustyPig.Mediametadata/DustyPig.Mediametadata.csproj"
+            dotnet pack -c release -o nuget
+            dotnet nuget push "nuget/*.nupkg" --skip-duplicate -k ${{secrets.NUGET_KEY}} -s https://api.nuget.org/v3/index.json

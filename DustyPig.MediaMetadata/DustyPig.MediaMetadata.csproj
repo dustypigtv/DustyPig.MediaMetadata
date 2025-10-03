@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DustyPig.API" Version="3.7.1.299" />
+    <PackageReference Include="DustyPig.OMDb" Version="1.0.0.5" />
+    <PackageReference Include="DustyPig.TMDB" Version="3.3.0.39" />
+    <PackageReference Include="DustyPig.TVDB" Version="4.7.9.19" />
+  </ItemGroup>
+
+</Project>

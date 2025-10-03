@@ -7,8 +7,7 @@ namespace DustyPig.MediaMetadata;
 
 internal class ClientFactory(Configuration configuration, HttpClient? httpClient = null)
 {
-    // Single internal HttpClient shared by all api cients
-    private static readonly HttpClient _sharedClient = new();
+    private static readonly HttpClient _internalHttpClient = new();
 
 
     /// <summary>
@@ -17,7 +16,7 @@ internal class ClientFactory(Configuration configuration, HttpClient? httpClient
     public TMDB.Client GetTMDBClient()
     {
         ThrowIfAnyUnset("TMDB API key must be set in Configuration", configuration.TMDBApiKey);
-        var ret = new TMDB.Client(httpClient ?? _sharedClient)
+        var ret = new TMDB.Client(httpClient ?? _internalHttpClient)
         {
             IncludeRawContentInResponse = configuration.ApiClientsIncludeRawContentResponse,
             AutoThrowIfError = configuration.ApiClientsAutoThrowOnError
@@ -35,7 +34,7 @@ internal class ClientFactory(Configuration configuration, HttpClient? httpClient
     {
         ThrowIfAnyUnset("TVDB API key and pin must be set in Configuration", configuration.TVDBApiKey, configuration.TVDBApiPin);
 
-        TVDB.Client ret = new(httpClient ?? _sharedClient)
+        TVDB.Client ret = new(httpClient ?? _internalHttpClient)
         {
             IncludeRawContentInResponse = configuration.ApiClientsIncludeRawContentResponse,
             AutoThrowIfError = configuration.ApiClientsAutoThrowOnError
@@ -67,7 +66,7 @@ internal class ClientFactory(Configuration configuration, HttpClient? httpClient
     public OMDb.Client GetOMDbClient()
     {
         ThrowIfAnyUnset("OMDb API key must be set in Configuration", configuration.OmdbApiKey);
-        var ret = new OMDb.Client(httpClient ?? _sharedClient)
+        var ret = new OMDb.Client(httpClient ?? _internalHttpClient)
         {
             IncludeRawContentInResponse = configuration.ApiClientsIncludeRawContentResponse,
             ApiKey = configuration.OmdbApiKey,

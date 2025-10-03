@@ -15,9 +15,10 @@ using TvAppend = DustyPig.TMDB.Models.TvSeries.AppendToResponse;
 namespace DustyPig.MediaMetadata;
 
 
-public partial class MetaClient(Configuration configuration, HttpClient? httpClient = null)
+public class MetaClient(Configuration configuration, HttpClient? httpClient = null)
 {
     private readonly ClientFactory _clientFactory = new(configuration, httpClient);
+
 
 
     #region Movies

@@ -16,12 +16,12 @@ public class Configuration
     public string? TVDBApiPin { get; set; }
 
     /// <summary>
-    /// This value will be updated by the <see cref="ClientFactory"/>, and <see cref="TVDBTokenChanged"/> will be raised
+    /// This value will be updated by the <see cref="MetaClient"/>, and <see cref="TVDBTokenChanged"/> will be raised
     /// </summary>
     public string? TVDBToken { get; set; }
 
     /// <summary>
-    /// This value will be updated by the <see cref="ClientFactory"/>, and <see cref="TVDBTokenChanged"/> will be raised
+    /// This value will be updated by the <see cref="MetaClient"/>, and <see cref="TVDBTokenChanged"/> will be raised
     /// </summary>
     public DateTime TVDBTokenExpiresUTC { get; set; }
 

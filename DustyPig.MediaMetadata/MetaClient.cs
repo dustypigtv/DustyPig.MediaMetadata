@@ -1471,10 +1471,21 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
     #region Episodes
 
+    public async Task<Episode> GetEpisode(Query query, int season, int number, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query.TvdbId, $"{nameof(query)}.{nameof(query.TvdbId)}");
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.TvdbId.Value, 1, $"{nameof(query)}.{nameof(query.TvdbId)}");
+
+        var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
+        var eps = await tvdbClient.Series.GetEpisodesAsync(query.TvdbId.Value, SeasonTypes.Default, 0, season, number, cancellationToken: cancellationToken).ConfigureAwait(false);
+        eps.ThrowIfError();
+        var ep = eps.Data.Episodes.FirstOrDefault() ?? throw new Exception("Episode not found");
+        return await GetEpisode(query, ep.Id, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<Episode> GetEpisode(Query query, int episodeTvdbId, CancellationToken cancellationToken = default)
     {
-        if (episodeTvdbId < 1)
-            throw new Exception("Invalid TvdbId");
+        ArgumentOutOfRangeException.ThrowIfLessThan(episodeTvdbId, 1, nameof(episodeTvdbId));
 
 
         var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);

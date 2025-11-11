@@ -863,6 +863,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     break;
             }
 
+            if (ret.TvdbId == null && ret.Title != null && tvdbSearchByTitle == false)
+            {
+                tvdbSearchByTitle = true;
+                changed |= await TvdbSeriesSearchByTitle(ret, cancellationToken).ConfigureAwait(false);
+                if (ret.Complete())
+                    break;
+            }
+
             if (ret.TvdbId != null && tvdbDetails == false)
             {
                 tvdbDetails = true;
@@ -952,7 +960,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (query.TvdbId != null)
             return false;
 
-        if (query.Title == null || query.Year == null)
+        //if (query.Title == null || query.Year == null)
+        if (query.Title == null)
             return false;
 
         bool changed = false;

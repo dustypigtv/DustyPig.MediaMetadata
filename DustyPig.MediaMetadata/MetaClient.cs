@@ -26,6 +26,10 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
     public async Task<Movie> GetMovieMetadata(Query query, CancellationToken cancellationToken = default)
     {
+        string? edition = null;
+        if (!query.Title.IsNullOrWhiteSpace())
+            edition = query.Title.SplitTitle(query.Year ?? 1900).ExtraTitle;
+
         query = await GetMovieIds(query, cancellationToken).ConfigureAwait(false);
         var ret = query.ToMovie();
 
@@ -47,6 +51,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (ret.ImdbId != null)
             await ImdbMovieDetails(ret, false, cancellationToken).ConfigureAwait(false);
 
+        ret.Edition = edition;
         return ret;
     }
 

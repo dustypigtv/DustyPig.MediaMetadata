@@ -1770,11 +1770,11 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         int page = 0;
         while (true)
         {
-            var response = await tvdbClient.Episodes.GetAllAsync(page++, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var response = await tvdbClient.Series.GetEpisodesAsync(query.TvdbId!.Value, SeasonTypes.Default, page++, cancellationToken: cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
-            if (response.Data == null || response.Data.Count == 0)
+            if (response.Data == null || response.Data.Episodes == null || response.Data.Episodes.Count == 0)
                 break;
-            episodeIds.AddRange(response.Data.Select(_ => _.Id));
+            episodeIds.AddRange(response.Data.Episodes.Select(_ => _.Id));
         }
 
         var ret = new List<Episode>();

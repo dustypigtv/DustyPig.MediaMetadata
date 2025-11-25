@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace DustyPig.MediaMetadata;
 
-internal class ClientFactory(Configuration configuration, HttpClient? httpClient = null)
+public class ClientFactory(Configuration configuration, HttpClient? httpClient = null)
 {
     private static readonly HttpClient _internalHttpClient = new();
 

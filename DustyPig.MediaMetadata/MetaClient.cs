@@ -1768,27 +1768,49 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     }
 
     /// <summary>
-    /// This will try to get ALL episodes for the query. Warning: This can be slow!
+    /// This will try to get ALL episodes for the query. This does not fill all episode data
     /// </summary>
     public async Task<List<Episode>> GetAllEpisodes(Query query, CancellationToken cancellationToken = default)
     {
+        if (!query.TvdbId.HasValue || query.TvdbId.Value < 1)
+            query = await GetSeriesIds(query, cancellationToken).ConfigureAwait(false);
+
+        if (!query.TvdbId.HasValue || query.TvdbId.Value < 1)
+            throw new Exception("Invalid " + nameof(query) + '.' + nameof(query.TvdbId));
+
         var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
-        List<int> episodeIds = [];
+
+        List<EpisodeBaseRecord> tvdbEpisodes = [];
         int page = 0;
         while (true)
         {
-            var response = await tvdbClient.Series.GetEpisodesAsync(query.TvdbId!.Value, SeasonTypes.Default, page++, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var response = await tvdbClient.Series.GetSeasonEpisodesTranslatedAsync(query.TvdbId!.Value, SeasonTypes.Default, "eng", page++, cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
             if (response.Data == null || response.Data.Episodes == null || response.Data.Episodes.Count == 0)
                 break;
-            episodeIds.AddRange(response.Data.Episodes.Select(_ => _.Id));
+            tvdbEpisodes.AddRange(response.Data.Episodes);
         }
 
         var ret = new List<Episode>();
-
-        foreach(var id in episodeIds)
+        foreach(var tvdbEpisode in tvdbEpisodes)
         {
-            var episode = await GetEpisode(query, id, cancellationToken).ConfigureAwait(false);
+            var episode = new Episode
+            {
+                Number = tvdbEpisode.Number ?? -1,
+                Overview = tvdbEpisode.Overview,
+                ScreenshotUrl = tvdbEpisode.Image,
+                Season = tvdbEpisode.SeasonNumber ?? -1,
+                SeriesImdbId = query.ImdbId,
+                SeriesTmdbId = query.TmdbId,
+                SeriesTvdbId = query.TvdbId,
+                Title = tvdbEpisode.Name,
+                TvdbId = tvdbEpisode.Id,
+
+            };
+            if (!tvdbEpisode.Aired.IsNullOrWhiteSpace())
+                if (DateOnly.TryParse(tvdbEpisode.Aired, out DateOnly dt))
+                    episode.FirstAired = dt;
+
             ret.Add(episode);
         }
 

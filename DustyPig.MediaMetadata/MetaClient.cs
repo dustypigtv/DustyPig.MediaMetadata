@@ -32,6 +32,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         query = await GetMovieIds(query, cancellationToken).ConfigureAwait(false);
         var ret = query.ToMovie();
+        ret.Edition = edition;
+
 
         if (ret.TmdbId.HasValue)
         {
@@ -51,7 +53,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (ret.ImdbId != null)
             await ImdbMovieDetails(ret, false, cancellationToken).ConfigureAwait(false);
 
-        ret.Edition = edition;
+       
         return ret;
     }
 

@@ -1760,6 +1760,36 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         return ret;
     }
 
+    /// <summary>
+    /// This will try to get ALL episodes for the query. Warning: This can be slow!
+    /// </summary>
+    public async Task<List<Episode>> GetAllEpisodes(Query query, CancellationToken cancellationToken = default)
+    {
+        var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
+        List<int> episodeIds = [];
+        int page = 0;
+        while (true)
+        {
+            var response = await tvdbClient.Episodes.GetAllAsync(page++, cancellationToken: cancellationToken).ConfigureAwait(false);
+            response.ThrowIfError();
+            if (response.Data == null || response.Data.Count == 0)
+                break;
+            episodeIds.AddRange(response.Data.Select(_ => _.Id));
+        }
+
+        var ret = new List<Episode>();
+
+        foreach(var id in episodeIds)
+        {
+            var episode = await GetEpisode(query, id, cancellationToken).ConfigureAwait(false);
+            ret.Add(episode);
+        }
+
+        
+        return ret;
+    }
+
+
     #endregion
 
 

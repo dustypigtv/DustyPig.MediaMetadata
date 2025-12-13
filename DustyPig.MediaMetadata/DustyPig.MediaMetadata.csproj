@@ -37,7 +37,7 @@
 	<ItemGroup>
 		<PackageReference Include="DustyPig.API" Version="3.7.1.299" />
 		<PackageReference Include="DustyPig.OMDb" Version="1.0.0.5" />
-		<PackageReference Include="DustyPig.TMDB" Version="3.3.0.39" />
+		<PackageReference Include="DustyPig.TMDB" Version="3.3.0.40" />
 		<PackageReference Include="DustyPig.TVDB" Version="4.7.9.19" />
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
 		  <PrivateAssets>all</PrivateAssets>

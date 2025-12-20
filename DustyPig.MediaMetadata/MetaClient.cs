@@ -1670,7 +1670,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                             var seriesResponse = await omdbClient.GetSeriesByIdAsync(query.ImdbId, false, cancellationToken).ConfigureAwait(false);
                             if (int.TryParse(seriesResponse.Data!.TotalSeasons, out int totalSeasons))
                             {
-                                for (int imdbSeason = 0; imdbSeason < totalSeasons; imdbSeason++)
+                                for (int imdbSeason = 0; imdbSeason <= totalSeasons; imdbSeason++)
                                 {
                                     if (imdbSeason != ret.Season)
                                     {

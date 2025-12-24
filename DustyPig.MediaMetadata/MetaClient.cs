@@ -1731,6 +1731,23 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         }
 
 
+        //Try scraping imdb
+        if (!ret.CompleteMetadata() && ret.ImdbId.HasValue())
+        {
+            //This breaks often, just swallow the error
+            try
+            {
+                var imdbEp = await IMDBScraper.TryGetEpisodeInfo(ret.ImdbId, cancellationToken);
+                ret.Title ??= imdbEp.Title;
+                ret.FirstAired ??= imdbEp.FirstAired;
+                ret.Overview ??= imdbEp.Overview;
+                ret.Directors ??= imdbEp.Directors;
+                ret.Writers ??= imdbEp.Writers;
+                ret.Cast ??= imdbEp.Cast;
+            }
+            catch { }
+        }
+
         return ret;
     }
 
@@ -1843,7 +1860,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         return null;
     }
 
-    private static bool TryMapMovieRatings(string country, string rating, [NotNullWhen(true)] out string? rated)
+    internal static bool TryMapMovieRatings(string country, string rating, [NotNullWhen(true)] out string? rated)
     {
         rated = null;
 

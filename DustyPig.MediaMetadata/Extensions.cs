@@ -11,6 +11,7 @@ internal static class Extensions
 {
     public static bool IsNullOrWhiteSpace([NotNullWhen(false)] this string? self) => string.IsNullOrWhiteSpace(self);
 
+    public static bool HasValue([NotNullWhen(true)] this string? s) => !string.IsNullOrWhiteSpace(s);
 
     public static string NormalizeString(this string? self)
     {

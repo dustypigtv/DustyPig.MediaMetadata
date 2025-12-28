@@ -75,6 +75,14 @@ public class ClientFactory(Configuration configuration, HttpClient? httpClient =
         return ret;
     }
 
+    public IMDB.Client GetIMDBClient()
+    {
+        return new IMDB.Client(httpClient ?? _internalHttpClient)
+        {
+            IncludeRawContentInResponse = configuration.ApiClientsIncludeRawContentResponse,
+            AutoThrowIfError = configuration.ApiClientsAutoThrowOnError
+        };
+    }
 
     private static void ThrowIfAnyUnset(string msg, params string?[] values)
     {

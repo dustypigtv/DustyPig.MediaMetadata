@@ -1633,12 +1633,15 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 omdbClient.AutoThrowIfError = true;
 
                 //Ensure we have the episode imdb
-                if (ret.ImdbId == null && query.ImdbId != null)
+                if (ret.SeriesImdbId.IsNullOrWhiteSpace())
+                    ret.SeriesImdbId = query.ImdbId.ToNonEmpy();
+
+                if (ret.ImdbId == null && ret.SeriesImdbId.HasValue())
                 {
                     try
                     {
                         //Get the orig season
-                        var seasonResponse = await omdbClient.GetSeasonAsync(query.ImdbId, ret.Season, cancellationToken).ConfigureAwait(false);
+                        var seasonResponse = await omdbClient.GetSeasonAsync(ret.SeriesImdbId, ret.Season, cancellationToken).ConfigureAwait(false);
                         seasonResponse.Data!.Episodes ??= [];
 
                         //Try to find the matching episode
@@ -1667,7 +1670,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                         //Get all the seasons
                         if (selectedItem == null)
                         {
-                            var seriesResponse = await omdbClient.GetSeriesByIdAsync(query.ImdbId, false, cancellationToken).ConfigureAwait(false);
+                            var seriesResponse = await omdbClient.GetSeriesByIdAsync(ret.SeriesImdbId, false, cancellationToken).ConfigureAwait(false);
                             if (int.TryParse(seriesResponse.Data!.TotalSeasons, out int totalSeasons))
                             {
                                 for (int imdbSeason = 0; imdbSeason <= totalSeasons; imdbSeason++)
@@ -1676,7 +1679,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                                     {
                                         try
                                         {
-                                            seasonResponse = await omdbClient.GetSeasonAsync(query.ImdbId, imdbSeason, cancellationToken).ConfigureAwait(false);
+                                            seasonResponse = await omdbClient.GetSeasonAsync(ret.SeriesImdbId, imdbSeason, cancellationToken).ConfigureAwait(false);
                                             foreach (var ep in seasonResponse.Data!.Episodes ?? [])
                                             {
                                                 if (int.TryParse(ep.Episode, out int epNum))
@@ -1712,24 +1715,109 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     catch { }
                 }
 
-                // Try to get the info
-                if (ret.ImdbId != null)
-                {
-                    var imdbResponse = await omdbClient.GetEpisodeByIdAsync(ret.ImdbId, true, cancellationToken).ConfigureAwait(false);
-                    ret.Cast ??= imdbResponse.Data!.Actors.SplitOmdbString();
-                    ret.Directors ??= imdbResponse.Data!.Director.SplitOmdbString();
 
-                    if (ret.FirstAired == null && DateOnly.TryParse(imdbResponse.Data!.Released, out DateOnly dt))
+                if (ret.ImdbId.IsNullOrWhiteSpace() && ret.SeriesImdbId.HasValue())
+                {
+                    try
+                    {
+                        var imdbClient = _clientFactory.GetIMDBClient();
+                        var seriesResponse = await imdbClient.GetTitleAsync(ret.SeriesImdbId, cancellationToken).ConfigureAwait(false);
+                        ret.ImdbId = seriesResponse.Data!.Episodes!
+                            .Where(_ => _.SeasonNumber!.Value == ret.Season)
+                            .Where(_ => _.EpisodeNumber!.Value == ret.Number)
+                            .First().TConst;
+                    }
+                    catch { }
+                }
+
+
+                // Try to get the info
+                if (ret.ImdbId.HasValue())
+                {
+                    var omdbResponse = await omdbClient.GetEpisodeByIdAsync(ret.ImdbId, true, cancellationToken).ConfigureAwait(false);
+                    ret.Cast ??= omdbResponse.Data!.Actors.SplitOmdbString();
+                    ret.Directors ??= omdbResponse.Data!.Director.SplitOmdbString();
+
+                    if (ret.FirstAired == null && DateOnly.TryParse(omdbResponse.Data!.Released, out DateOnly dt))
                         ret.FirstAired = dt;
 
-                    ret.Overview ??= imdbResponse.Data!.Plot.ToNonEmpy();
-                    ret.Title ??= imdbResponse.Data!.Title.ToNonEmpy();
-                    ret.Writers ??= imdbResponse.Data!.Writer.SplitOmdbString();
+                    ret.Overview ??= omdbResponse.Data!.Plot.ToNonEmpy();
+                    ret.Title ??= omdbResponse.Data!.Title.ToNonEmpy();
+                    ret.Writers ??= omdbResponse.Data!.Writer.SplitOmdbString();
                 }
             }
             catch { }
         }
 
+        // Try the DustyPig imdb api
+        if (!ret.CompleteMetadata())
+        {
+            try
+            {
+                if (ret.SeriesImdbId.HasValue())
+                {
+                    var imdbClient = _clientFactory.GetIMDBClient();
+                    
+                    if (ret.ImdbId.IsNullOrWhiteSpace())
+                    {
+                        var seriesResponse = await imdbClient.GetTitleAsync(ret.SeriesImdbId, cancellationToken).ConfigureAwait(false);
+                        seriesResponse.ThrowIfError();
+                        ret.ImdbId = seriesResponse.Data!.Episodes!
+                            .Where(_ => _.SeasonNumber!.Value == ret.Season)
+                            .Where(_ => _.EpisodeNumber!.Value == ret.Number)
+                            .First().TConst;
+                    }
+
+
+                    if (ret.ImdbId.HasValue())
+                    {
+                        var episodeResponse = await imdbClient.GetTitleAsync(ret.ImdbId, cancellationToken).ConfigureAwait(false);
+                        episodeResponse.ThrowIfError();
+                        var data = episodeResponse.Data!;
+
+                        ret.Title ??= data.Basic.PrimaryTitle;
+                        
+                        if ((ret.Directors?.Count ?? 0) == 0)
+                            ret.Directors = data.Crew?.Directors.ToNonEmpty();
+                        
+                        if ((ret.Writers?.Count ?? 0) == 0)
+                            ret.Writers = data.Crew?.Writers.ToNonEmpty();
+
+                        if((ret.Cast?.Count ?? 0) == 0 && data.Principals != null)
+                        {
+                            foreach(var nconst in data.Principals.Where(_ => _.Character.HasValue()).Select(_ => _.NConst))
+                            {
+                                try
+                                {
+                                    var personResponse = await imdbClient.GetPersonAsync(nconst, cancellationToken).ConfigureAwait(false);
+                                    personResponse.ThrowIfError();
+                                    if (personResponse.Data!.PrimaryName.HasValue())
+                                    {
+                                        ret.Cast ??= [];
+                                        ret.Cast.Add(personResponse.Data.PrimaryName);
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                        ret.Cast = ret.Cast.ToNonEmpty();
+
+                        if(data.ExternalData != null)
+                        {
+                            ret.FirstAired ??= data.ExternalData.Date;
+
+                            if (ret.Overview.IsNullOrWhiteSpace())
+                                ret.Overview = data.ExternalData.Plot.ToNonEmpy();
+
+                            if (ret.ScreenshotUrl.IsNullOrWhiteSpace())
+                                ret.ScreenshotUrl = data.ExternalData.ImageUrl;
+                        }
+                    }
+                    
+                }
+            }
+            catch { }
+        }
 
         //Try scraping imdb
         if (!ret.CompleteMetadata() && ret.ImdbId.HasValue())
@@ -1737,7 +1825,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             //This breaks often, just swallow the error
             try
             {
-                var imdbEp = await IMDBScraper.TryGetEpisodeInfo(ret.ImdbId, cancellationToken);
+                var imdbEp = await IMDBScraper.TryGetEpisodeInfo(ret.ImdbId, cancellationToken).ConfigureAwait(false);
                 ret.Title ??= imdbEp.Title;
                 ret.FirstAired ??= imdbEp.FirstAired;
                 ret.Overview ??= imdbEp.Overview;

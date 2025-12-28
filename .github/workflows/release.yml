@@ -11,13 +11,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # - name: Setup .NET
-      #   uses: actions/setup-dotnet@v3
-      #   with: 
-      #     dotnet-version: 9
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with: 
+          dotnet-version: 10
+
+      - name: NuGet login
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: dustypigtv
 
       - name: Build
         run: |
             sed -i "s/\(<Version>\([0-9]\+\.\)\{3\}\)\([0-9]\+\)/\1${{github.run_number}}/" "DustyPig.MediaMetadata/DustyPig.MediaMetadata.csproj"
             dotnet pack -c release -o nuget
-            dotnet nuget push "nuget/*.nupkg" --skip-duplicate -k ${{secrets.NUGET_KEY}} -s https://api.nuget.org/v3/index.json
+            dotnet nuget push "nuget/*.nupkg" --skip-duplicate -k ${{steps.login.outputs.NUGET_API_KEY}} -s https://api.nuget.org/v3/index.json

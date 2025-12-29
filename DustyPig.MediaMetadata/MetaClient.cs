@@ -1819,23 +1819,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             catch { }
         }
 
-        //Try scraping imdb
-        if (!ret.CompleteMetadata() && ret.ImdbId.HasValue())
-        {
-            //This breaks often, just swallow the error
-            try
-            {
-                var imdbEp = await IMDBScraper.TryGetEpisodeInfo(ret.ImdbId, cancellationToken).ConfigureAwait(false);
-                ret.Title ??= imdbEp.Title;
-                ret.FirstAired ??= imdbEp.FirstAired;
-                ret.Overview ??= imdbEp.Overview;
-                ret.Directors ??= imdbEp.Directors;
-                ret.Writers ??= imdbEp.Writers;
-                ret.Cast ??= imdbEp.Cast;
-            }
-            catch { }
-        }
-
+        
         return ret;
     }
 

@@ -658,7 +658,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                         .FirstOrDefault(_ => _.Type == TVDB_IMAGE_TYPE_MOVIE_POSTER)?.Image.ToNonEmpy();
 
                     if (url != null)
-                        movie.PosterUrl = url;
+                        movie.PosterUrl = TVDB.Utils.GetArtworkPath(url);
                 }
 
                 if (movie.BackdropUrl.IsNullOrWhiteSpace())
@@ -670,7 +670,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                         .FirstOrDefault(_ => _.Type == TVDB_IMAGE_TYPE_MOVIE_BACKDROP)?.Image.ToNonEmpy();
 
                     if (url != null)
-                        movie.BackdropUrl = url;
+                        movie.BackdropUrl = TVDB.Utils.GetArtworkPath(url);
                 }
 
                 if (!movie.HasRating())
@@ -1196,7 +1196,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     .FirstOrDefault(_ => _.Type == TVDB_IMAGE_TYPE_SERIES_POSTER)?.Image;
 
                 if (url != null)
-                    series.PosterUrl = url;
+                    series.PosterUrl = TVDB.Utils.GetArtworkPath(url);
 
                 url = response.Data.Artworks
                     .Where(_ => _.Language.ICEquals("eng"))
@@ -1205,7 +1205,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     .First(_ => _.Type == TVDB_IMAGE_TYPE_SERIES_BACKDROP)?.Image;
 
                 if (url != null)
-                    series.BackdropUrl = url;
+                    series.BackdropUrl = TVDB.Utils.GetArtworkPath(url);
             }
         }
         catch { }
@@ -1867,7 +1867,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         if (response.Data.ImageType == TVDB_IMAGE_TYPE_EPISODE_SCREENSHOP_16_9 || response.Data.ImageType == TVDB_IMAGE_TYPE_EPISODE_SCREENSHOT_4_3)
             if (!response.Data.Image.IsNullOrWhiteSpace())
-                ret.ScreenshotUrl = response.Data.Image.ToNonEmpy();
+                ret.ScreenshotUrl = TVDB.Utils.GetArtworkPath(response.Data.Image.ToNonEmpy());
 
         return ret;
     }
@@ -1903,7 +1903,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             {
                 Number = tvdbEpisode.Number ?? -1,
                 Overview = tvdbEpisode.Overview,
-                ScreenshotUrl = tvdbEpisode.Image,
+                ScreenshotUrl = TVDB.Utils.GetArtworkPath(tvdbEpisode.Image),
                 Season = tvdbEpisode.SeasonNumber ?? -1,
                 SeriesImdbId = query.ImdbId,
                 SeriesTmdbId = query.TmdbId,

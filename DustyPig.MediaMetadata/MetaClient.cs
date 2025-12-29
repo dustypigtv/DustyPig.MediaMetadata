@@ -1855,9 +1855,9 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             Cast = (response.Data.Characters ?? []).Where(_ => _.IsFeatured).Select(_ => _.Name).ToList().ToNonEmpty(),
             Number = response.Data.Number ?? -1,
             ImdbId = ids.ImdbId,
-            Overview = Coalesce(response.Data.Translations.OverviewTranslations.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Overview.ToNonEmpy(), response.Data.Overview.ToNonEmpy()),
+            Overview = Coalesce(response.Data.Translations?.OverviewTranslations?.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Overview.ToNonEmpy(), response.Data.Overview.ToNonEmpy()),
             Season = response.Data.SeasonNumber ?? -1,
-            Title = Coalesce(response.Data.Translations.NameTranslations.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Name.ToNonEmpy(), response.Data.Name.ToNonEmpy()),
+            Title = Coalesce(response.Data.Translations?.NameTranslations?.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Name.ToNonEmpy(), response.Data.Name.ToNonEmpy()),
             TmdbId = ids.TmdbId,
             TvdbId = response.Data.Id
         };

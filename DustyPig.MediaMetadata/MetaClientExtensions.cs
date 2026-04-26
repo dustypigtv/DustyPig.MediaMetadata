@@ -198,16 +198,22 @@ internal static partial class MetaClientExtensions
         new()
         {
             ImdbId = query.ImdbId,
+            ImdbUrl = query.ImdbId.HasValue() ? $"https://www.imdb.com/title/{query.ImdbId}/" : null,
             TmdbId = query.TmdbId,
-            TvdbId = query.TvdbId
+            TmdbUrl = query.TmdbId.HasValue ? $"https://www.themoviedb.org/movie/{query.TmdbId.Value}" : null,
+            TvdbId = query.TvdbId,
+            TvdbUrl = query.TvdbId.HasValue ? $"https://thetvdb.com/dereferrer/movie/{query.TvdbId.Value}" : null
         };
 
     public static Series ToSeries(this Query query) =>
         new()
         {
             ImdbId = query.ImdbId,
+            ImdbUrl = query.ImdbId.HasValue() ? $"https://www.imdb.com/title/{query.ImdbId}/" : null,
             TmdbId = query.TmdbId,
-            TvdbId = query.TvdbId
+            TmdbUrl = query.TmdbId.HasValue ? $"https://www.themoviedb.org/tv/{query.TmdbId.Value}" : null,
+            TvdbId = query.TvdbId,
+            TvdbUrl = query.TvdbId.HasValue ? $"https://thetvdb.com/dereferrer/series/{query.TvdbId.Value}" : null
         };
 
     public static void CopyToQuery(this Movie movie, Query query)
@@ -265,8 +271,12 @@ internal static partial class MetaClientExtensions
     {
         movie.Cleanup();
         if (movie.ImdbId == null) return false;
+        if (movie.ImdbUrl == null) return false;
         if (movie.TmdbId == null) return false;
+        if (movie.TmdbUrl == null) return false;
         if (movie.TvdbId == null) return false;
+        if (movie.TvdbSlug == null) return false;
+        if (movie.TvdbUrl == null) return false;
         if (movie.Title == null) return false;
         if (movie.Genres == null) return false;
         if (movie.Overview == null) return false;
@@ -301,8 +311,11 @@ internal static partial class MetaClientExtensions
     {
         series.Cleanup();
         if (series.ImdbId == null) return false;
+        if (series.ImdbUrl == null) return false;
         if (series.TmdbId == null) return false;
+        if (series.TmdbUrl == null) return false;
         if (series.TvdbId == null) return false;
+        if (series.TvdbUrl == null) return false;
         if (series.Title == null) return false;
         if (series.Year == null) return false;
         if (series.TvdbSlug == null) return false;
@@ -333,11 +346,14 @@ internal static partial class MetaClientExtensions
         if (episode.Directors == null) return false;
         if (episode.FirstAired == null) return false;
         if (episode.ImdbId == null) return false;
+        if (episode.ImdbUrl == null) return false;
         if (episode.Overview == null) return false;
         //if (episode.Producers == null) return false;
         if (episode.Title == null) return false;
         if (episode.TmdbId == null) return false;
+        if (episode.TmdbUrl == null) return false;
         if (episode.TvdbId == null) return false;
+        if (episode.TvdbUrl == null) return false;
         if (episode.Writers == null) return false;
         return true;
     }

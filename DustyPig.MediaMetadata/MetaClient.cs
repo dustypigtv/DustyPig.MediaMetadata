@@ -1,4 +1,5 @@
 ﻿using DustyPig.API.v3.MPAA;
+using DustyPig.REST;
 using DustyPig.TVDB.Models;
 using System;
 using System.Collections.Generic;
@@ -287,6 +288,9 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         bool changed = false;
         try
         {
+            if (movie.TmdbUrl.IsNullOrWhiteSpace())
+                movie.TmdbUrl = $"https://www.themoviedb.org/movie/{movie.TmdbId.Value}";
+
             try
             {
                 var tmdbClient = _clientFactory.GetTMDBClient();
@@ -599,9 +603,18 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         bool changed = false;
         try
         {
+            if(movie.TvdbUrl.IsNullOrWhiteSpace())
+                movie.TvdbUrl = $"https://thetvdb.com/dereferrer/movie/{movie.TvdbId.Value}";
+
             var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
             var response = await tvdbClient.Movies.GetExtendedAsync(movie.TvdbId.Value, true, false, cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
+
+            if(response.Data.Slug.HasValue())
+            {
+                movie.TvdbSlug = response.Data.Slug;
+                movie.TvdbUrl = $"https://thetvdb.com/movies/{movie.TvdbSlug}";
+            }
 
             var ids = response.Data.RemoteIds.Process();
 
@@ -737,6 +750,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     {
         if (movie.ImdbId == null)
             return false;
+
+        movie.ImdbUrl = $"https://www.imdb.com/title/{movie.ImdbId}/";
 
         if (movie.Title != null && movie.Year.HasValue)
             return false;
@@ -1119,12 +1134,19 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (series.TvdbId == null)
             return false;
 
+        
         bool changed = false;
         try
         {
+            series.TvdbUrl = $"https://thetvdb.com/dereferrer/series/{series.TvdbId.Value}";
+            
             var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
             var response = await tvdbClient.Series.GetExtendedAsync(series.TvdbId.Value, Meta.Translations, false, cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
+
+            series.TvdbSlug = response.Data.Slug;
+            if(series.TvdbSlug.HasValue())
+                series.TvdbUrl = $"https://thetvdb.com/series/{series.TvdbSlug}";
 
             response.Data.Translations ??= new();
             response.Data.Translations.NameTranslations ??= [];
@@ -1295,6 +1317,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (series.TmdbId == null)
             return false;
 
+        series.TmdbUrl = $"https://www.themoviedb.org/tv/{series.TmdbId.Value}";
+
         bool changed = false;
         try
         {
@@ -1447,6 +1471,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (series.ImdbId == null)
             return false;
 
+        series.ImdbUrl = $"https://www.imdb.com/title/{series.ImdbId}/";
+
         bool changed = false;
         try
         {
@@ -1496,7 +1522,12 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         var eps = await tvdbClient.Series.GetEpisodesAsync(query.TvdbId.Value, SeasonTypes.Default, 0, season, number, cancellationToken: cancellationToken).ConfigureAwait(false);
         eps.ThrowIfError();
         var ep = eps.Data.Episodes.FirstOrDefault() ?? throw new Exception("Episode not found");
-        return await GetEpisode(query, ep.Id, cancellationToken).ConfigureAwait(false);
+
+        var ret = await GetEpisode(query, ep.Id, cancellationToken).ConfigureAwait(false);
+        if (eps.Data.Series?.Slug.HasValue() ?? false)
+            ret.TvdbUrl = $"https://thetvdb.com/series/{eps.Data.Series.Slug}/episodes/{ep.Id}";
+        
+        return ret;
     }
 
     public async Task<Episode> GetEpisode(Query query, int episodeTvdbId, CancellationToken cancellationToken = default)
@@ -1839,11 +1870,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             Cast = (response.Data.Characters ?? []).Where(_ => _.IsFeatured).Select(_ => _.Name).ToList().ToNonEmpty(),
             Number = response.Data.Number ?? -1,
             ImdbId = ids.ImdbId,
+            ImdbUrl = ids.ImdbId.HasValue() ? $"https://www.imdb.com/title/{ids.ImdbId}/" : null,
             Overview = Coalesce(response.Data.Translations?.OverviewTranslations?.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Overview.ToNonEmpy(), response.Data.Overview.ToNonEmpy()),
             Season = response.Data.SeasonNumber ?? -1,
             Title = Coalesce(response.Data.Translations?.NameTranslations?.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Name.ToNonEmpy(), response.Data.Name.ToNonEmpy()),
             TmdbId = ids.TmdbId,
-            TvdbId = response.Data.Id
+            TmdbUrl = ids.TmdbId.HasValue && response.Data.SeasonNumber.HasValue && response.Data.Number.HasValue ? $"https://www.themoviedb.org/tv/{ids.TmdbId.Value}/season/{response.Data.SeasonNumber.Value}/episode/{response.Data.Number.Value}" : null,
+            TvdbId = response.Data.Id,
+            TvdbUrl = $"https://thetvdb.com/dereferrer/episode/{response.Data.Id}"
         };
 
         if (DateOnly.TryParse(response.Data.Aired, out DateOnly dt))
@@ -1868,6 +1902,13 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             throw new Exception("Invalid " + nameof(query) + '.' + nameof(query.TvdbId));
 
         var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
+
+        var tvdbSeriesResponse = await tvdbClient.Series.GetExtendedAsync(query.TvdbId.Value, null, true, cancellationToken).ConfigureAwait(false);
+        tvdbSeriesResponse.ThrowIfError();
+                
+        var ids = tvdbSeriesResponse.Data.RemoteIds.Process();
+        
+        string tvdbUrl = tvdbSeriesResponse.Data.Slug.HasValue() ? $"https://thetvdb.com/series/{tvdbSeriesResponse.Data.Slug}/episodes/" : $"https://thetvdb.com/dereferrer/episode/";
 
         List<EpisodeBaseRecord> tvdbEpisodes = [];
         int page = 0;
@@ -1894,8 +1935,10 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 SeriesTvdbId = query.TvdbId,
                 Title = tvdbEpisode.Name,
                 TvdbId = tvdbEpisode.Id,
-
+                TvdbUrl = tvdbUrl + tvdbEpisode.Id.ToString(),
+                TmdbUrl = ids.TmdbId.HasValue && tvdbEpisode.SeasonNumber.HasValue && tvdbEpisode.Number.HasValue ? $"https://www.themoviedb.org/tv/{ids.TmdbId.Value}/season/{tvdbEpisode.SeasonNumber.Value}/episode/{tvdbEpisode.Number.Value}" : null,
             };
+            
             if (!tvdbEpisode.Aired.IsNullOrWhiteSpace())
                 if (DateOnly.TryParse(tvdbEpisode.Aired, out DateOnly dt))
                     episode.FirstAired = dt;

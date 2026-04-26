@@ -7,9 +7,15 @@ public class Series
 {
     public string? ImdbId { get; set; }
 
+    public string? ImdbUrl { get; set; }
+
     public int? TvdbId { get; set; }
 
+    public string? TvdbUrl { get; set; }
+
     public int? TmdbId { get; set; }
+
+    public string? TmdbUrl { get; set; }
 
     public string? Title { get; set; }
 

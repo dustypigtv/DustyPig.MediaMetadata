@@ -1523,14 +1523,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         eps.ThrowIfError();
         var ep = eps.Data.Episodes.FirstOrDefault() ?? throw new Exception("Episode not found");
 
-        var ret = await GetEpisode(query, ep.Id, cancellationToken).ConfigureAwait(false);
+        var ret = await GetEpisodeMetadata(query, ep.Id, cancellationToken).ConfigureAwait(false);
         if (eps.Data.Series?.Slug.HasValue() ?? false)
             ret.TvdbUrl = $"https://thetvdb.com/series/{eps.Data.Series.Slug}/episodes/{ep.Id}";
         
         return ret;
     }
 
-    public async Task<Episode> GetEpisode(Query query, int episodeTvdbId, CancellationToken cancellationToken = default)
+    public async Task<Episode> GetEpisodeMetadata(Query query, int episodeTvdbId, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(episodeTvdbId, 1, nameof(episodeTvdbId));
 

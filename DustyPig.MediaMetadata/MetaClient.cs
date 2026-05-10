@@ -60,7 +60,6 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     }
 
 
-
     public async Task<MovieSearchResults> SearchMovies(string title, int? year = null, CancellationToken cancellationToken = default)
     {
         MovieSearchResults ret = new();
@@ -918,6 +917,86 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         return ret;
     }
+
+
+    public async Task<SeriesSearchResults> SearchSeries(string title, int? year = null, CancellationToken cancellationToken = default)
+    {
+        SeriesSearchResults ret = new();
+
+        if (title.IsNullOrWhiteSpace())
+            return ret;
+
+        var titleSplit = title.SplitTitle(year);
+
+
+
+        // TVDB
+        try
+        {
+            var client = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
+            var response = await client.Search.SearchAsync(titleSplit.Query, SearchTypes.Series, year, cancellationToken: cancellationToken).ConfigureAwait(false);
+            ret.TvdbResults = response.Data!;
+        }
+        catch { }
+        if (ret.TvdbResults is not null && ret.TvdbResults.Count == 0)
+            ret.TvdbResults = null;
+
+
+
+        // TMDB
+        try
+        {
+            var client = _clientFactory.GetTMDBClient();
+            var response = await client.Endpoints.Search.TvSeriesAsync(titleSplit.Query, firstAirDateYear: year, cancellationToken: default).ConfigureAwait(false);
+            ret.TmdbResults = response.Data!.Results;
+        }
+        catch { }
+        if (ret.TmdbResults is not null && ret.TmdbResults.Count == 0)
+            ret.TmdbResults = null;
+
+
+
+        // OMDB
+        try
+        {
+            var client = _clientFactory.GetOMDbClient();
+            var response = await client.SearchForSeriesAsync(titleSplit.Query, year, cancellationToken: cancellationToken).ConfigureAwait(false);
+            ret.ImdbResults = response.Data!.Search;
+        }
+        catch { }
+
+
+
+        // IMDB
+        ret.ImdbResults ??= [];
+        if (ret.ImdbResults.Count == 0)
+        {
+            try
+            {
+                var client = _clientFactory.GetIMDBClient();
+                string? titleType = null;
+                var response = await client.SearchTitleAsync(titleSplit.Query, titleType, year: year, adult: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                response.Data!.RemoveAll(_ => !(_.Basic.TitleType.ICEquals(IMDB.Models.TitleTypes.TvSeries.ToString()) || _.Basic.TitleType.ICEquals(IMDB.Models.TitleTypes.TvMiniSeries.ToString())));
+                response.Data.RemoveAll(i => ret.ImdbResults.Any(o => o.ImdbId == i.Basic.TConst));
+                ret.ImdbResults.AddRange(response.Data.Select(_ => new OMDb.Models.SearchResultItem
+                {
+                    ImdbId = _.Basic.TConst,
+                    Title = _.Basic.OriginalTitle,
+                    Type = _.Basic.TitleType,
+                    Year = _.Basic.StartYear?.ToString()
+                }));
+            }
+            catch { }
+        }
+
+        if (ret.ImdbResults is not null && ret.ImdbResults.Count == 0)
+            ret.ImdbResults = null;
+
+
+        return ret;
+    }
+
+
 
 
 

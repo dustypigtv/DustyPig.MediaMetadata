@@ -86,4 +86,19 @@ public sealed class Test1
     }
 
 
+
+    [TestMethod]
+    public async Task SearchSeries()
+    {
+        var response = await _metaClient.SearchSeries("Buffy the Vampire Slayer");
+
+        Assert.IsNotNull(response.TmdbResults);
+        Assert.IsNotEmpty(response.TmdbResults);
+
+        Assert.IsNotNull(response.TvdbResults);
+        Assert.IsNotEmpty(response.TvdbResults);
+
+        Assert.IsNotNull(response.ImdbResults);
+        Assert.IsNotEmpty(response.ImdbResults);
+    }
 }

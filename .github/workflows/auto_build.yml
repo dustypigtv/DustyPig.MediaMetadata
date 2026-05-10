@@ -2,6 +2,13 @@ name: Auto-Build
 on:
   push
 
+env:
+  TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+  TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
+  TVDB_API_PIN: ${{ secrets.TVDB_API_PIN }}
+  OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+  
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,4 +23,4 @@ jobs:
       #     dotnet-version: 9
 
       - name: Build
-        run: dotnet build -c release
+        run: dotnet test -c release

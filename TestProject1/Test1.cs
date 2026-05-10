@@ -18,6 +18,7 @@ public sealed class Test1
         Assert.AreEqual("tt0848228", response.ImdbId);
     }
 
+
     [TestMethod]
     public async Task GetSeriesMetadata()
     {
@@ -28,6 +29,7 @@ public sealed class Test1
         Assert.AreEqual("tt0118276", response.ImdbId);
     }
 
+    
     [TestMethod]
     public async Task GetAllEpisodes()
     {
@@ -48,8 +50,9 @@ public sealed class Test1
         Assert.AreEqual(2, firstEp.TvdbId);
     }
 
+
     [TestMethod]
-    public async Task GetEpisode()
+    public async Task GetEpisodeMetadata()
     {
         var query = new Query
         {
@@ -65,4 +68,12 @@ public sealed class Test1
         Assert.AreEqual(949413, response.TmdbId);
         Assert.AreEqual("tt0452716", response.ImdbId);
     }
+
+
+
+
+
+
+
+
 }

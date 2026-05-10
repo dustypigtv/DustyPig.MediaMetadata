@@ -70,10 +70,20 @@ public sealed class Test1
     }
 
 
+    [TestMethod]
+    public async Task SearchMovies()
+    {
+        var response = await _metaClient.SearchMovies("The Avengers", 2012);
+        
+        Assert.IsNotNull(response.TmdbResults);
+        Assert.IsNotEmpty(response.TmdbResults);
 
+        Assert.IsNotNull(response.TvdbResults);
+        Assert.IsNotEmpty(response.TvdbResults);
 
-
-
+        Assert.IsNotNull(response.ImdbResults);
+        Assert.IsNotEmpty(response.ImdbResults);
+    }
 
 
 }

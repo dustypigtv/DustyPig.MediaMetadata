@@ -198,22 +198,22 @@ internal static partial class MetaClientExtensions
         new()
         {
             ImdbId = query.ImdbId,
-            ImdbUrl = query.ImdbId.HasValue() ? $"https://www.imdb.com/title/{query.ImdbId}/" : null,
+            ImdbUrl = query.ImdbId.HasValue() ? MetaClient.GetImdbUri(query.ImdbId).ToString() : null,
             TmdbId = query.TmdbId,
-            TmdbUrl = query.TmdbId.HasValue ? $"https://www.themoviedb.org/movie/{query.TmdbId.Value}" : null,
+            TmdbUrl = query.TmdbId.HasValue ? MetaClient.GetTmdbMovieUri(query.TmdbId.Value).ToString() : null,
             TvdbId = query.TvdbId,
-            TvdbUrl = query.TvdbId.HasValue ? $"https://thetvdb.com/dereferrer/movie/{query.TvdbId.Value}" : null
+            TvdbUrl = query.TvdbId.HasValue ? MetaClient.GetTvdbMovieUri(query.TvdbId.Value).ToString() : null
         };
 
     public static Series ToSeries(this Query query) =>
         new()
         {
             ImdbId = query.ImdbId,
-            ImdbUrl = query.ImdbId.HasValue() ? $"https://www.imdb.com/title/{query.ImdbId}/" : null,
+            ImdbUrl = query.ImdbId.HasValue() ? MetaClient.GetImdbUri(query.ImdbId).ToString() : null,
             TmdbId = query.TmdbId,
-            TmdbUrl = query.TmdbId.HasValue ? $"https://www.themoviedb.org/tv/{query.TmdbId.Value}" : null,
+            TmdbUrl = query.TmdbId.HasValue ? MetaClient.GetTmdbSeriesUri(query.TmdbId.Value).ToString() : null,
             TvdbId = query.TvdbId,
-            TvdbUrl = query.TvdbId.HasValue ? $"https://thetvdb.com/dereferrer/series/{query.TvdbId.Value}" : null
+            TvdbUrl = query.TvdbId.HasValue ? MetaClient.GetTvdbSeriesUri(query.TvdbId.Value).ToString() : null
         };
 
     public static void CopyToQuery(this Movie movie, Query query)

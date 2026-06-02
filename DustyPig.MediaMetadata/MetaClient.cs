@@ -2179,7 +2179,12 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         return false;
     }
 
+    public static Uri GetTvdbSearchUri(string search) => new("https://thetvdb.com/search?query=" + Uri.EscapeDataString(search));
 
+    public static Uri GetTvdbSeriesSearchUri(string search) => new("https://thetvdb.com/search?menu%5Btype%5D=series&query=" + Uri.EscapeDataString(search));
+
+    public static Uri GetTvdbMovieSearchUri(string search) => new("https://thetvdb.com/search?menu%5Btype%5D=movie&query=" + Uri.EscapeDataString(search));
+    
     public static Uri GetTvdbSeriesUri(int id) => new($"https://thetvdb.com/dereferrer/series/{id}");
 
     public static  Uri GetTvdbMovieUri (int id) => new($"https://thetvdb.com/dereferrer/movie/{id}");
@@ -2187,6 +2192,12 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     public static Uri GetTvdbSeriesUri(string slug) => new($"https://thetvdb.com/series/{slug}");
 
     public static Uri GetTvdbMovieUri(string slug) => new($"https://thetvdb.com/movies/{slug}");
+
+    public static Uri GetTmdbMovieSearchUri(string search) => new("https://www.themoviedb.org/search/movie?query=" + Uri.EscapeDataString(search));
+
+    public static Uri GetTmdbSeriesSearchUri(string search) => new("https://www.themoviedb.org/search/tv?query=" + Uri.EscapeDataString(search));
+
+    public static Uri GetTmdbSearchUri(string search) => new("https://www.themoviedb.org/search?query=" + Uri.EscapeDataString(search));
 
     public static Uri GetTmdbSeriesUri(int id) => new($"https://www.themoviedb.org/tv/{id}");
 
@@ -2199,6 +2210,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     public static Uri GetTmdbEpisodeUri(int seriesId, int season, int episode) => new($"https://www.themoviedb.org/tv/{seriesId}/season/{season}/episode/{episode}");
 
     public static Uri GetImdbUri(string ttId) => new($"https://www.imdb.com/title/{ttId}/");
+
+    public static Uri GetImdbSearchUri(string search) => new("https://www.imdb.com/find/?q=" + Uri.EscapeDataString(search));
 
     #endregion
 }

@@ -42,4 +42,6 @@ public class Episode
     public List<string>? Producers { get; set; }
 
     public string? ScreenshotUrl { get; set; }
+
+    public override string ToString() => $"s{Season:00}e{Number:00} - {Title}";
 }

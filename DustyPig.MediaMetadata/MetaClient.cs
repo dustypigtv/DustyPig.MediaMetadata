@@ -582,20 +582,17 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                         {
                             try
                             {
-                                if ((response.Data.PosterPath.IsNullOrWhiteSpace() && response.Data.Images.Posters.Count == 0)
-                                || (response.Data.BackdropPath.IsNullOrWhiteSpace() && response.Data.Images.Backdrops.Count == 0))
-                                {
-
-                                    var imageResponse = await tmdbClient.Endpoints.Movies.GetImagesAsync(response.Data.Id, language: null, cancellationToken: cancellationToken).ConfigureAwait(false);
-                                    response.Data.Images.Posters.AddRange(imageResponse.Data!.Posters);
-                                    response.Data.Images.Backdrops.AddRange(imageResponse.Data.Backdrops);
-                                }
+                                //GetDetails call returned english images, so null for any langugage here
+                                var imageResponse = await tmdbClient.Endpoints.Movies.GetImagesAsync(response.Data.Id, language: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+                                response.Data.Images.Posters.AddRange(imageResponse.Data!.Posters ?? []);
+                                response.Data.Images.Backdrops.AddRange(imageResponse.Data.Backdrops);
                             }
                             catch { }
                         }
 
                         if (!posterWasSet)
                         {
+                            //For poster, use default first, then english images, then any image
                             string? url = response.Data.PosterPath.ToNonEmpy();
                             if (url == null)
                                 try { url = response.Data.Images.Posters.First(item => item.LanguageCode == "en").FilePath.ToNonEmpy(); }
@@ -614,10 +611,13 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
                         if (!backdropWasSet)
                         {
-                            string? url = response.Data.BackdropPath.ToNonEmpy();
-                            if (url == null)
-                                try { url = response.Data.Images.Backdrops.OrderByDescending(p => p.VoteAverage).First().FilePath.ToNonEmpy(); }
-                                catch { }
+                            //For backdrop: get english backdrops (included in details call), then default, then any
+                            //Trust sort order of server
+                            string? url = null;
+                            try { url = response.Data.Images.Backdrops.First().FilePath.ToNonEmpy(); }
+                            catch { }
+
+                            url ??= response.Data.BackdropPath.ToNonEmpy();
                             if (url != null)
                             {
                                 movie.BackdropUrl = TMDB.Utils.GetFullSizeImageUrl(url).ToNonEmpy();
@@ -1669,13 +1669,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                         try
                         {
                             var imagesResponse = await tmdbClient.Endpoints.Movies.GetImagesAsync(series.TmdbId.Value, language: null, cancellationToken: cancellationToken).ConfigureAwait(false);
-                            imagesResponse.Data ??= new TMDB.Models.Common.CommonImages2();
-
-                            if (response.Data.Images.Posters.Count == 0)
-                                response.Data.Images.Posters = imagesResponse.Data.Posters ?? [];
-
-                            if (response.Data.Images.Backdrops.Count == 0)
-                                response.Data.Images.Backdrops = imagesResponse.Data.Backdrops ?? [];
+                            response.Data.Images.Posters.AddRange(imagesResponse.Data!.Posters ?? []);
+                            response.Data.Images.Backdrops.AddRange(imagesResponse.Data.Backdrops);
                         }
                         catch { }
                     }
@@ -1693,8 +1688,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     if (series.BackdropUrl.IsNullOrWhiteSpace())
                     {
                         string? url = response.Data.BackdropPath.ToNonEmpy();
-                        url ??= response.Data.Images.Backdrops.OrderByDescending(p => p.VoteAverage).FirstOrDefault()?.FilePath.ToNonEmpy();
-
+                        url ??= response.Data.Images.Backdrops.FirstOrDefault()?.FilePath.ToNonEmpy();
                         if (url != null)
                             series.BackdropUrl = TMDB.Utils.GetFullSizeImageUrl(url).ToNonEmpy();
                     }

@@ -1796,7 +1796,9 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         var ret = await GetEpisodeMetadata(query, ep.Id, cancellationToken).ConfigureAwait(false);
         if (eps.Data.Series?.Slug.HasValue() ?? false)
             ret.TvdbUrl = GetTvdbEpisodeUri(eps.Data.Series.Slug, ep.Id).ToString();
+
         
+
         return ret;
     }
 
@@ -1924,6 +1926,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         }
         catch { }
 
+        if (ret.SeriesImdbId.IsNullOrWhiteSpace())
+            ret.SeriesImdbId = query.ImdbId.ToNonEmpy();
+
+        if (ret.SeriesTmdbId.ToNumericId() is null)
+            ret.SeriesTmdbId = query.TmdbId.ToNumericId();
+
+        if (ret.SeriesTvdbId.ToNumericId() is null)
+            ret.SeriesTvdbId = query.TvdbId.ToNumericId();
 
         // May be complete, only bother omdb if needed
         if (!ret.CompleteMetadata())

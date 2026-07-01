@@ -1806,37 +1806,56 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(episodeTvdbId, 1, nameof(episodeTvdbId));
 
+        bool doSecondPass = false;
 
         var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
         var ret = await GetEpisode(tvdbClient, episodeTvdbId, cancellationToken).ConfigureAwait(false);
+        
+        if (ret.SeriesImdbId.ToNonEmpy() is null)
+            ret.SeriesImdbId = query.ImdbId.ToNonEmpy();
+        if (ret.SeriesTmdbId.ToNumericId() is null)
+            ret.SeriesTmdbId = query.TmdbId.ToNumericId();
 
         string tvdbCompTitle = ret.Title.ToComparable();
-
+        int? tmdbSeason = null;
+        int? tmdbEpisode = null;
 
         // Tvdb doesn't have cast/director/writer, so the episode metadata wont be complete yet
-        try
+        for (int pass = 0; pass < 2; pass++)
         {
-            if (query.TmdbId.HasValue)
+            if (pass > 0 && !doSecondPass)
+                continue;
+
+            if (ret.CompleteMetadata())
+                continue;
+
+            try
             {
                 var tmdbClient = _clientFactory.GetTMDBClient();
                 tmdbClient.AutoThrowIfError = true;
 
                 TMDB.Models.TvSeasons.Episode? selectedEpisode = null;
 
-                if (ret.TmdbId == null && ret.ImdbId != null)
+                if (!(ret.SeriesTmdbId.HasValue && ret.TmdbId.HasValue) && ret.ImdbId.HasValue())
                 {
                     try
                     {
                         var response = await tmdbClient.Endpoints.Find.ByIdAsync(ret.ImdbId, TMDB.Models.Find.Externalsource.ImdbId, cancellationToken: cancellationToken).ConfigureAwait(false);
-                        ret.TmdbId = response.Data!.TvEpisodeResults
+
+                        ret.SeriesTmdbId = response.Data!.TvEpisodeResults
                             .Where(_ => _.Name.ToComparable() == tvdbCompTitle)
-                            .FirstOrDefault()?.Id.ToNumericId();
+                            .FirstOrDefault()?.ShowId.ToNumericId() ?? query.TmdbId.ToNumericId();
+
+                        if (!ret.TmdbId.HasValue)
+                            ret.TmdbId = response.Data!.TvEpisodeResults
+                                .Where(_ => _.Name.ToComparable() == tvdbCompTitle)
+                                .FirstOrDefault()?.Id.ToNumericId();
 
                         if (ret.TmdbId.HasValue)
                             selectedEpisode = new TMDB.Models.TvSeasons.Episode
                             {
                                 Id = ret.TmdbId.Value,
-                                ShowId = query.TmdbId.Value,
+                                ShowId = ret.SeriesTmdbId.ToNumericId() ?? query.TmdbId.ToNumericId() ?? 0,
                                 SeasonNumber = ret.Season,
                                 EpisodeNumber = ret.Number
                             };
@@ -1844,293 +1863,294 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     catch { }
                 }
 
-                if (selectedEpisode == null)
+                if (ret.SeriesTmdbId.HasValue)
                 {
-                    var tmdbEpisodes = new List<TMDB.Models.TvSeasons.Episode>();
+                    if (selectedEpisode == null)
+                    {
+                        //Try orig season first
+                        var seasonResponse = await tmdbClient.Endpoints.TvSeasons.GetDetailsAsync(ret.Season, ret.SeriesTmdbId.Value, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-                    //Try orig season first
-                    var seasonResponse = await tmdbClient.Endpoints.TvSeasons.GetDetailsAsync(ret.Season, query.TmdbId.Value, cancellationToken: cancellationToken).ConfigureAwait(false);
-                    tmdbEpisodes.AddRange(seasonResponse.Data!.Episodes);
+                        //Try by id if exists
+                        if (ret.TmdbId.HasValue)
+                            selectedEpisode = seasonResponse.Data!.Episodes
+                                .Where(_ => _.Id == ret.TmdbId.Value)
+                                .FirstOrDefault();
 
-                    //Try by id if exists
-                    if (ret.TmdbId.HasValue)
-                        selectedEpisode = tmdbEpisodes
-                            .Where(_ => _.Id == ret.TmdbId.Value)
+                        //Try by most accurate decreasing to least
+                        selectedEpisode ??= seasonResponse.Data!.Episodes
+                            .Where(_ => _.SeasonNumber == ret.Season)
+                            .Where(_ => _.EpisodeNumber == ret.Number)
+                            .Where(_ => _.Name.ToComparable() == tvdbCompTitle)
                             .FirstOrDefault();
 
-                    //Try by most accurate decreasing to least
-                    selectedEpisode ??= tmdbEpisodes
-                        .Where(_ => _.SeasonNumber == ret.Season)
-                        .Where(_ => _.EpisodeNumber == ret.Number)
-                        .Where(_ => _.Name.ToComparable() == tvdbCompTitle)
-                        .FirstOrDefault();
+                        //Check all eps in same season
+                        selectedEpisode ??= seasonResponse.Data!.Episodes
+                            .Where(_ => _.SeasonNumber == ret.Season)
+                            .Where(_ => _.Name.ToComparable() == tvdbCompTitle)
+                            .FirstOrDefault();
 
-                    //Check all eps in same season
-                    if (selectedEpisode == null)
-                    {
-                        foreach (var tmdbEp in tmdbEpisodes.Where(_ => _.SeasonNumber == ret.Season))
+                        //Get all other seasons
+                        if (selectedEpisode == null)
                         {
-                            if (tmdbEp.Name.ToComparable() == tvdbCompTitle)
+                            var seriesResponse = await tmdbClient.Endpoints.TvSeries.GetDetailsAsync(ret.SeriesTmdbId.Value, cancellationToken: cancellationToken).ConfigureAwait(false);
+                            foreach (var season in seriesResponse.Data!.Seasons.Where(_ => _.SeasonNumber != ret.Season))
                             {
-                                selectedEpisode = tmdbEp;
-                                break;
-                            }
-                        }
-                    }
+                                seasonResponse = await tmdbClient.Endpoints.TvSeasons.GetDetailsAsync(season.SeasonNumber, ret.SeriesTmdbId.Value, cancellationToken: cancellationToken).ConfigureAwait(false);
+                                selectedEpisode = seasonResponse.Data!.Episodes
+                                    .Where(_ => _.Name.ToComparable() == tvdbCompTitle)
+                                    .FirstOrDefault();
 
-                    //Get all other seasons
-                    if (selectedEpisode == null)
-                    {
-                        var seriesResponse = await tmdbClient.Endpoints.TvSeries.GetDetailsAsync(query.TmdbId.Value, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                        foreach (var season in seriesResponse.Data!.Seasons.Where(_ => _.SeasonNumber != ret.Season))
-                        {
-                            seasonResponse = await tmdbClient.Endpoints.TvSeasons.GetDetailsAsync(season.SeasonNumber, query.TmdbId.Value, cancellationToken: cancellationToken).ConfigureAwait(false);
-                            tmdbEpisodes.AddRange(seasonResponse.Data!.Episodes);
-
-                            foreach (var tmdbEp in tmdbEpisodes)
-                            {
-                                if (tmdbEp.Name.ToComparable() == tvdbCompTitle)
-                                {
-                                    selectedEpisode = tmdbEp;
+                                if (selectedEpisode != null)
                                     break;
-                                }
                             }
-
-                            if (selectedEpisode != null)
-                                break;
                         }
                     }
-                }
 
 
-                // If found, update ret
-                if (selectedEpisode != null)
-                {
-                    var episodeResponse = await tmdbClient.Endpoints.TvEpisodes.GetDetailsAsync(selectedEpisode.EpisodeNumber, selectedEpisode.SeasonNumber, selectedEpisode.ShowId, EpisodeAppend.Credits | EpisodeAppend.Images | EpisodeAppend.ExternalIds | EpisodeAppend.Translations, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    // If found, update ret
+                    if (selectedEpisode != null)
+                    {
+                        tmdbSeason = selectedEpisode.SeasonNumber;
+                        tmdbEpisode = selectedEpisode.EpisodeNumber;
 
-                    ret.Cast ??= episodeResponse.Data!.Credits.Cast.OrderBy(_ => _.Order).Select(_ => _.Name).ToList().ToNonEmpty();
-                    ret.Directors = episodeResponse.Data!.Crew.Where(_ => _.Job.ICEquals("Director")).Select(_ => _.Name).ToList().ToNonEmpty();
-                    ret.FirstAired ??= episodeResponse.Data.AirDate;
-                    ret.ImdbId ??= episodeResponse.Data.ExternalIds?.ImdbId.ToNonEmpy();
+                        var episodeResponse = await tmdbClient.Endpoints.TvEpisodes.GetDetailsAsync(selectedEpisode.EpisodeNumber, selectedEpisode.SeasonNumber, selectedEpisode.ShowId, EpisodeAppend.Credits | EpisodeAppend.Images | EpisodeAppend.ExternalIds | EpisodeAppend.Translations, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-                    ret.Overview ??= Coalesce(episodeResponse.Data.Translations.Translations.Where(_ => _.LanguageCode.ICEquals("en")).Select(_ => _.Data?.Overview).FirstOrDefault()?.ToNonEmpy(), episodeResponse.Data.Overview.ToNonEmpy());
-                    ret.Title ??= Coalesce(episodeResponse.Data.Translations.Translations.Where(_ => _.LanguageCode.ICEquals("en")).Select(_ => _.Data?.Overview).FirstOrDefault()?.ToNonEmpy(), episodeResponse.Data.Overview.ToNonEmpy());
-                    ret.TmdbId ??= episodeResponse.Data.Id.ToNumericId();
-                    ret.Writers = episodeResponse.Data.Crew.Where(_ => _.Job.ICEquals("Writer")).Select(_ => _.Name).ToList().ToNonEmpty();
+                        ret.TmdbId = episodeResponse.Data!.Id;
+                        ret.Cast ??= episodeResponse.Data!.Credits.Cast.OrderBy(_ => _.Order).Select(_ => _.Name).ToList().ToNonEmpty();
+                        ret.Directors = episodeResponse.Data!.Crew.Where(_ => _.Job.ICEquals("Director")).Select(_ => _.Name).ToList().ToNonEmpty();
+                        ret.FirstAired ??= episodeResponse.Data.AirDate;
 
-                    if (ret.ScreenshotUrl.IsNullOrWhiteSpace() && !episodeResponse.Data.StillPath.IsNullOrWhiteSpace())
-                        ret.ScreenshotUrl = TMDB.Utils.GetFullSizeImageUrl(episodeResponse.Data.StillPath).ToNonEmpy();
+                        var imdbId = episodeResponse.Data.ExternalIds?.ImdbId.ToNonEmpy();
+                        if (ret.ImdbId.IsNullOrWhiteSpace() && imdbId.HasValue())
+                        {
+                            doSecondPass = true;
+                            ret.ImdbId = imdbId;
+                        }
+
+                        ret.Overview ??= Coalesce(episodeResponse.Data.Translations.Translations.Where(_ => _.LanguageCode.ICEquals("en")).Select(_ => _.Data?.Overview).FirstOrDefault()?.ToNonEmpy(), episodeResponse.Data.Overview.ToNonEmpy());
+                        ret.Title ??= Coalesce(episodeResponse.Data.Translations.Translations.Where(_ => _.LanguageCode.ICEquals("en")).Select(_ => _.Data?.Overview).FirstOrDefault()?.ToNonEmpy(), episodeResponse.Data.Overview.ToNonEmpy());
+                        ret.TmdbId ??= episodeResponse.Data.Id.ToNumericId();
+                        ret.Writers = episodeResponse.Data.Crew.Where(_ => _.Job.ICEquals("Writer")).Select(_ => _.Name).ToList().ToNonEmpty();
+
+                        if (ret.ScreenshotUrl.IsNullOrWhiteSpace() && !episodeResponse.Data.StillPath.IsNullOrWhiteSpace())
+                            ret.ScreenshotUrl = TMDB.Utils.GetFullSizeImageUrl(episodeResponse.Data.StillPath).ToNonEmpy();
+                    }
                 }
             }
-        }
-        catch { }
+            catch { }
 
-        if (ret.SeriesImdbId.IsNullOrWhiteSpace())
-            ret.SeriesImdbId = query.ImdbId.ToNonEmpy();
 
-        if (ret.SeriesTmdbId.ToNumericId() is null)
-            ret.SeriesTmdbId = query.TmdbId.ToNumericId();
-
-        if (ret.SeriesTvdbId.ToNumericId() is null)
-            ret.SeriesTvdbId = query.TvdbId.ToNumericId();
-
-        // May be complete, only bother omdb if needed
-        if (!ret.CompleteMetadata())
-        {
-            try
+            // May be complete, only bother omdb if needed
+            if (!ret.CompleteMetadata())
             {
-                var omdbClient = _clientFactory.GetOMDbClient();
-                omdbClient.AutoThrowIfError = true;
-
-                //Ensure we have the episode imdb
-                if (ret.SeriesImdbId.IsNullOrWhiteSpace())
-                    ret.SeriesImdbId = query.ImdbId.ToNonEmpy();
-
-                if (ret.ImdbId == null && ret.SeriesImdbId.HasValue())
+                try
                 {
-                    try
-                    {
-                        //Get the orig season
-                        var seasonResponse = await omdbClient.GetSeasonAsync(ret.SeriesImdbId, ret.Season, cancellationToken).ConfigureAwait(false);
-                        seasonResponse.Data!.Episodes ??= [];
+                    var omdbClient = _clientFactory.GetOMDbClient();
+                    omdbClient.AutoThrowIfError = true;
 
-                        //Try to find the matching episode
-                        OMDb.Models.SeasonEpisodeItem? selectedItem = null;
-                        foreach (var ep in seasonResponse.Data.Episodes)
+                    if (ret.ImdbId == null && ret.SeriesImdbId.HasValue())
+                    {
+                        try
                         {
-                            if (int.TryParse(ep.Episode, out int epNum))
-                                if (epNum == ret.Number)
+                            //Get the orig season
+                            var seasonResponse = await omdbClient.GetSeasonAsync(ret.SeriesImdbId, ret.Season, cancellationToken).ConfigureAwait(false);
+                            seasonResponse.Data!.Episodes ??= [];
+
+                            //Try to find the matching episode
+                            OMDb.Models.SeasonEpisodeItem? selectedItem = null;
+                            foreach (var ep in seasonResponse.Data.Episodes)
+                            {
+                                if (int.TryParse(ep.Episode, out int epNum))
+                                    if (epNum == ret.Number)
+                                        if (ep.Title.ToComparable() == tvdbCompTitle)
+                                        {
+                                            selectedItem = ep;
+                                            break;
+                                        }
+                            }
+
+                            if (selectedItem == null)
+                                foreach (var ep in seasonResponse.Data.Episodes)
+                                {
                                     if (ep.Title.ToComparable() == tvdbCompTitle)
                                     {
                                         selectedItem = ep;
                                         break;
                                     }
-                        }
-
-                        if (selectedItem == null)
-                            foreach (var ep in seasonResponse.Data.Episodes)
-                            {
-                                if (ep.Title.ToComparable() == tvdbCompTitle)
-                                {
-                                    selectedItem = ep;
-                                    break;
                                 }
-                            }
 
-                        //Get all the seasons
-                        if (selectedItem == null)
-                        {
-                            var seriesResponse = await omdbClient.GetSeriesByIdAsync(ret.SeriesImdbId, false, cancellationToken).ConfigureAwait(false);
-                            if (int.TryParse(seriesResponse.Data!.TotalSeasons, out int totalSeasons))
+                            //Get all the seasons
+                            if (selectedItem == null)
                             {
-                                for (int imdbSeason = 0; imdbSeason <= totalSeasons; imdbSeason++)
+                                var seriesResponse = await omdbClient.GetSeriesByIdAsync(ret.SeriesImdbId, false, cancellationToken).ConfigureAwait(false);
+                                if (int.TryParse(seriesResponse.Data!.TotalSeasons, out int totalSeasons))
                                 {
-                                    if (imdbSeason != ret.Season)
+                                    for (int imdbSeason = 0; imdbSeason <= totalSeasons; imdbSeason++)
                                     {
-                                        try
+                                        if (imdbSeason != ret.Season)
                                         {
-                                            seasonResponse = await omdbClient.GetSeasonAsync(ret.SeriesImdbId, imdbSeason, cancellationToken).ConfigureAwait(false);
-                                            foreach (var ep in seasonResponse.Data!.Episodes ?? [])
+                                            try
                                             {
-                                                if (int.TryParse(ep.Episode, out int epNum))
-                                                    if (epNum == ret.Number)
+                                                seasonResponse = await omdbClient.GetSeasonAsync(ret.SeriesImdbId, imdbSeason, cancellationToken).ConfigureAwait(false);
+                                                foreach (var ep in seasonResponse.Data!.Episodes ?? [])
+                                                {
+                                                    if (int.TryParse(ep.Episode, out int epNum))
+                                                        if (epNum == ret.Number)
+                                                            if (ep.Title.ToComparable() == tvdbCompTitle)
+                                                            {
+                                                                selectedItem = ep;
+                                                                break;
+                                                            }
+                                                }
+
+                                                if (selectedItem == null)
+                                                    foreach (var ep in seasonResponse.Data.Episodes ?? [])
+                                                    {
                                                         if (ep.Title.ToComparable() == tvdbCompTitle)
                                                         {
                                                             selectedItem = ep;
                                                             break;
                                                         }
-                                            }
-
-                                            if (selectedItem == null)
-                                                foreach (var ep in seasonResponse.Data.Episodes ?? [])
-                                                {
-                                                    if (ep.Title.ToComparable() == tvdbCompTitle)
-                                                    {
-                                                        selectedItem = ep;
-                                                        break;
                                                     }
-                                                }
+                                            }
+                                            catch { }
                                         }
-                                        catch { }
+                                        if (selectedItem != null)
+                                            break;
                                     }
-                                    if (selectedItem != null)
-                                        break;
                                 }
                             }
+
+                            ret.ImdbId = selectedItem?.ImdbId.ToNonEmpy();
+                            if (ret.ImdbId.HasValue())
+                                doSecondPass = true;
                         }
-
-                        ret.ImdbId = selectedItem?.ImdbId.ToNonEmpy();
-
+                        catch { }
                     }
-                    catch { }
-                }
 
 
-                if (ret.ImdbId.IsNullOrWhiteSpace() && ret.SeriesImdbId.HasValue())
-                {
-                    try
+                    if (ret.ImdbId.IsNullOrWhiteSpace() && ret.SeriesImdbId.HasValue())
                     {
-                        var imdbClient = _clientFactory.GetIMDBClient();
-                        var seriesResponse = await imdbClient.GetTitleAsync(ret.SeriesImdbId, cancellationToken).ConfigureAwait(false);
-                        ret.ImdbId = seriesResponse.Data!.Episodes!
-                            .Where(_ => _.SeasonNumber!.Value == ret.Season)
-                            .Where(_ => _.EpisodeNumber!.Value == ret.Number)
-                            .First().TConst;
-                    }
-                    catch { }
-                }
+                        try
+                        {
+                            var imdbClient = _clientFactory.GetIMDBClient();
+                            var seriesResponse = await imdbClient.GetTitleAsync(ret.SeriesImdbId, cancellationToken).ConfigureAwait(false);
+                            ret.ImdbId = seriesResponse.Data!.Episodes!
+                                .Where(_ => _.SeasonNumber!.Value == ret.Season)
+                                .Where(_ => _.EpisodeNumber!.Value == ret.Number)
+                                .First().TConst;
 
-
-                // Try to get the info
-                if (ret.ImdbId.HasValue())
-                {
-                    var omdbResponse = await omdbClient.GetEpisodeByIdAsync(ret.ImdbId, true, cancellationToken).ConfigureAwait(false);
-                    ret.Cast ??= omdbResponse.Data!.Actors.SplitOmdbString();
-                    ret.Directors ??= omdbResponse.Data!.Director.SplitOmdbString();
-
-                    if (ret.FirstAired == null && DateOnly.TryParse(omdbResponse.Data!.Released, out DateOnly dt))
-                        ret.FirstAired = dt;
-
-                    ret.Overview ??= omdbResponse.Data!.Plot.ToNonEmpy();
-                    ret.Title ??= omdbResponse.Data!.Title.ToNonEmpy();
-                    ret.Writers ??= omdbResponse.Data!.Writer.SplitOmdbString();
-                }
-            }
-            catch { }
-        }
-
-        // Try the DustyPig imdb api
-        if (!ret.CompleteMetadata())
-        {
-            try
-            {
-                if (ret.SeriesImdbId.HasValue())
-                {
-                    var imdbClient = _clientFactory.GetIMDBClient();
-                    
-                    if (ret.ImdbId.IsNullOrWhiteSpace())
-                    {
-                        var seriesResponse = await imdbClient.GetTitleAsync(ret.SeriesImdbId, cancellationToken).ConfigureAwait(false);
-                        seriesResponse.ThrowIfError();
-                        ret.ImdbId = seriesResponse.Data!.Episodes!
-                            .Where(_ => _.SeasonNumber!.Value == ret.Season)
-                            .Where(_ => _.EpisodeNumber!.Value == ret.Number)
-                            .First().TConst;
+                            if (ret.ImdbId.HasValue())
+                                doSecondPass = true;
+                        }
+                        catch { }
                     }
 
 
+                    // Try to get the info
                     if (ret.ImdbId.HasValue())
                     {
-                        var episodeResponse = await imdbClient.GetTitleAsync(ret.ImdbId, cancellationToken).ConfigureAwait(false);
-                        episodeResponse.ThrowIfError();
-                        var data = episodeResponse.Data!;
+                        var omdbResponse = await omdbClient.GetEpisodeByIdAsync(ret.ImdbId, true, cancellationToken).ConfigureAwait(false);
+                        ret.Cast ??= omdbResponse.Data!.Actors.SplitOmdbString();
+                        ret.Directors ??= omdbResponse.Data!.Director.SplitOmdbString();
 
-                        ret.Title ??= data.Basic.PrimaryTitle;
-                        
-                        if ((ret.Directors?.Count ?? 0) == 0)
-                            ret.Directors = data.Crew?.Directors.ToNonEmpty();
-                        
-                        if ((ret.Writers?.Count ?? 0) == 0)
-                            ret.Writers = data.Crew?.Writers.ToNonEmpty();
+                        if (ret.FirstAired == null && DateOnly.TryParse(omdbResponse.Data!.Released, out DateOnly dt))
+                            ret.FirstAired = dt;
 
-                        if((ret.Cast?.Count ?? 0) == 0 && data.Principals != null)
+                        ret.Overview ??= omdbResponse.Data!.Plot.ToNonEmpy();
+                        ret.Title ??= omdbResponse.Data!.Title.ToNonEmpy();
+                        ret.Writers ??= omdbResponse.Data!.Writer.SplitOmdbString();
+
+                        if (!ret.ImdbId.HasValue())
+                            ret.ImdbId = omdbResponse.Data!.SeriesId;
+                    }
+                }
+                catch { }
+            }
+
+            // Try the DustyPig imdb api
+            if (!ret.CompleteMetadata())
+            {
+                try
+                {
+                    if (ret.SeriesImdbId.HasValue())
+                    {
+                        var imdbClient = _clientFactory.GetIMDBClient();
+
+                        if (ret.ImdbId.IsNullOrWhiteSpace())
                         {
-                            foreach(var nconst in data.Principals.Where(_ => _.Character.HasValue()).Select(_ => _.NConst))
+                            var seriesResponse = await imdbClient.GetTitleAsync(ret.SeriesImdbId, cancellationToken).ConfigureAwait(false);
+                            seriesResponse.ThrowIfError();
+                            ret.ImdbId = seriesResponse.Data!.Episodes!
+                                .Where(_ => _.SeasonNumber!.Value == ret.Season)
+                                .Where(_ => _.EpisodeNumber!.Value == ret.Number)
+                                .First().TConst;
+
+                            if (ret.ImdbId.HasValue())
+                                doSecondPass = true;
+                        }
+
+
+                        if (ret.ImdbId.HasValue())
+                        {
+                            var episodeResponse = await imdbClient.GetTitleAsync(ret.ImdbId, cancellationToken).ConfigureAwait(false);
+                            episodeResponse.ThrowIfError();
+                            var data = episodeResponse.Data!;
+
+                            ret.Title ??= data.Basic.PrimaryTitle;
+
+                            if ((ret.Directors?.Count ?? 0) == 0)
+                                ret.Directors = data.Crew?.Directors.ToNonEmpty();
+
+                            if ((ret.Writers?.Count ?? 0) == 0)
+                                ret.Writers = data.Crew?.Writers.ToNonEmpty();
+
+                            if ((ret.Cast?.Count ?? 0) == 0 && data.Principals != null)
                             {
-                                try
+                                foreach (var nconst in data.Principals.Where(_ => _.Character.HasValue()).Select(_ => _.NConst))
                                 {
-                                    var personResponse = await imdbClient.GetPersonAsync(nconst, cancellationToken).ConfigureAwait(false);
-                                    personResponse.ThrowIfError();
-                                    if (personResponse.Data!.PrimaryName.HasValue())
+                                    try
                                     {
-                                        ret.Cast ??= [];
-                                        ret.Cast.Add(personResponse.Data.PrimaryName);
+                                        var personResponse = await imdbClient.GetPersonAsync(nconst, cancellationToken).ConfigureAwait(false);
+                                        personResponse.ThrowIfError();
+                                        if (personResponse.Data!.PrimaryName.HasValue())
+                                        {
+                                            ret.Cast ??= [];
+                                            ret.Cast.Add(personResponse.Data.PrimaryName);
+                                        }
                                     }
+                                    catch { }
                                 }
-                                catch { }
+                            }
+                            ret.Cast = ret.Cast.ToNonEmpty();
+
+                            if (data.ExternalData != null)
+                            {
+                                ret.FirstAired ??= data.ExternalData.Date;
+
+                                if (ret.Overview.IsNullOrWhiteSpace())
+                                    ret.Overview = data.ExternalData.Plot.ToNonEmpy();
+
+                                if (ret.ScreenshotUrl.IsNullOrWhiteSpace())
+                                    ret.ScreenshotUrl = data.ExternalData.ImageUrl;
                             }
                         }
-                        ret.Cast = ret.Cast.ToNonEmpty();
 
-                        if(data.ExternalData != null)
-                        {
-                            ret.FirstAired ??= data.ExternalData.Date;
-
-                            if (ret.Overview.IsNullOrWhiteSpace())
-                                ret.Overview = data.ExternalData.Plot.ToNonEmpy();
-
-                            if (ret.ScreenshotUrl.IsNullOrWhiteSpace())
-                                ret.ScreenshotUrl = data.ExternalData.ImageUrl;
-                        }
                     }
-                    
                 }
+                catch { }
             }
-            catch { }
+
+            if (ret.TvdbId > 0)
+                ret.TvdbUrl = GetTvdbEpisodeUri(ret.TvdbId.Value).ToString();
+
+            if (ret.SeriesTmdbId > 0 && tmdbSeason >= 0 && tmdbEpisode > 0)
+                ret.TmdbUrl = GetTmdbEpisodeUri(ret.SeriesTmdbId.Value, tmdbSeason.Value, tmdbEpisode.Value).ToString();
+
+            if (ret.ImdbId.HasValue())
+                ret.ImdbUrl = GetImdbUri(ret.ImdbId).ToString();
         }
 
-        
         return ret;
     }
 
@@ -2154,12 +2174,13 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             Overview = Coalesce(response.Data.Translations?.OverviewTranslations?.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Overview.ToNonEmpy(), response.Data.Overview.ToNonEmpy()),
             Season = response.Data.SeasonNumber ?? -1,
             Title = Coalesce(response.Data.Translations?.NameTranslations?.Where(_ => _.Language.ICEquals("eng")).FirstOrDefault()?.Name.ToNonEmpy(), response.Data.Name.ToNonEmpy()),
-            TmdbId = ids.TmdbId,
-            TmdbUrl = ids.TmdbId.HasValue && response.Data.SeasonNumber.HasValue && response.Data.Number.HasValue ? GetTmdbEpisodeUri(ids.TmdbId.Value, response.Data.SeasonNumber.Value, response.Data.Number.Value).ToString() : null,
+            //TmdbId = ids.TmdbId,
+            //TmdbUrl = ids.TmdbId.HasValue && response.Data.SeasonNumber.HasValue && response.Data.Number.HasValue ? GetTmdbEpisodeUri(ids.TmdbId.Value, response.Data.SeasonNumber.Value, response.Data.Number.Value).ToString() : null,
             TvdbId = response.Data.Id,
-            TvdbUrl = GetTvdbEpisodeUri(response.Data.Id).ToString()
+            TvdbUrl = GetTvdbEpisodeUri(response.Data.Id).ToString(), 
+            SeriesTvdbId = response.Data.SeriesId
         };
-
+       
         if (DateOnly.TryParse(response.Data.Aired, out DateOnly dt))
             ret.FirstAired = dt;
 

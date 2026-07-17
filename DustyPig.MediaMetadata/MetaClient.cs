@@ -53,9 +53,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         }
 
         if (ret.ImdbId != null)
-            await ImdbMovieDetails(ret, false, cancellationToken).ConfigureAwait(false);
+        {
+            await OmdbMovieDetails(ret, false, cancellationToken).ConfigureAwait(false);
+            if (ret.CompleteMetadata())
+                return ret;
 
-       
+            await ImdbMovieDetails(ret, false, cancellationToken).ConfigureAwait(false);
+        }
+
         return ret;
     }
 
@@ -310,6 +315,10 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             if (ret.ImdbId == null && ret.Title != null && ret.Year != null && imdbSearchByTitle == false)
             {
                 imdbSearchByTitle = true;
+                changed |= await OmdbMovieSearchByTitle(ret, cancellationToken).ConfigureAwait(false);
+                if (ret.Complete())
+                    break;
+
                 changed |= await ImdbMovieSearchByTitle(ret, cancellationToken).ConfigureAwait(false);
                 if (ret.Complete())
                     break;
@@ -319,6 +328,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             {
                 imdDetails = true;
                 var movie = ret.ToMovie();
+                changed |= await OmdbMovieDetails(movie, true, cancellationToken).ConfigureAwait(false);
                 changed |= await ImdbMovieDetails(movie, true, cancellationToken).ConfigureAwait(false);
                 movie.CopyToQuery(ret);
                 if (ret.Complete())
@@ -524,12 +534,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                             response.Data.Overview.ToNonEmpy(),
                             movie.Overview
                         );
-                    movie.Genres = Coalesce(response.Data.Genres?.Select(_ => _.Name).Distinct().Order().ToList().ToNonEmpty(), movie.Genres);
+
+                    response.Data.Genres ??= [];
+                    movie.Genres = Coalesce(response.Data.Genres.Select(_ => _.Name).Distinct().Order().ToList().ToNonEmpty(), movie.Genres);
 
                     MovieRatings? movieRating = null;
                     foreach (var release in (response.Data.ReleaseDates?.Results ?? []).OrderBy(_ => !_.CountryCode.ICEquals("US")))
                     {
-                        foreach (var candidateReleaseDate in release.ReleaseDates)
+                        foreach (var candidateReleaseDate in release.ReleaseDates ?? [])
                         {
                             if (TryMapMovieRatings(release.CountryCode, candidateReleaseDate.Certification, out string? rating))
                             {
@@ -761,6 +773,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 movie.TvdbUrl = GetTvdbMovieUri(movie.TvdbSlug).ToString();
             }
 
+            response.Data.RemoteIds ??= [];
             var ids = response.Data.RemoteIds.Process();
 
             if (movie.TmdbId == null)
@@ -775,8 +788,10 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 changed |= movie.ImdbId != null;
             }
 
+            response.Data.Translations ??= new();
             if (movie.Title == null)
             {
+                response.Data.Translations.NameTranslations ??= [];
                 movie.Title = Coalesce(response.Data.Translations.NameTranslations.FirstOrDefault(_ => _.Language == "eng")?.Name, response.Data.Name).ToNonEmpy();
                 changed |= movie.Title != null;
             }
@@ -803,10 +818,16 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
             if (!idsOnly)
             {
-                movie.Overview ??= response.Data.Translations.OverviewTranslations.FirstOrDefault(_ => _.Language == "eng")?.Overview.ToNonEmpy();
-                movie.Genres ??= (response.Data.Genres ?? []).Select(_ => _.Name).Distinct().Order().ToList().ToNonEmpty();
+                response.Data.Translations.OverviewTranslations ??= [];
+                movie.Overview ??= response.Data.Translations.OverviewTranslations?.FirstOrDefault(_ => _.Language == "eng")?.Overview.ToNonEmpy();
+
+                response.Data.Genres ??= [];
+                movie.Genres ??= response.Data.Genres.Select(_ => _.Name).Distinct().Order().ToList().ToNonEmpty();
+
+                response.Data.Characters ??= [];
                 movie.Cast ??= response.Data.Characters.Where(_ => _.IsFeatured).Select(_ => _.PersonName).ToList().ToNonEmpty();
 
+                response.Data.Artworks ??= [];
                 if (movie.PosterUrl.IsNullOrWhiteSpace())
                 {
                     string? url = response.Data.Artworks
@@ -858,7 +879,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
 
 
-    private async Task<bool> ImdbMovieSearchByTitle(Query query, CancellationToken cancellationToken)
+    private async Task<bool> OmdbMovieSearchByTitle(Query query, CancellationToken cancellationToken)
     {
         if (query.ImdbId != null)
             return false;
@@ -891,14 +912,14 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     }
 
 
-    private async Task<bool> ImdbMovieDetails(Movie movie, bool idsOnly, CancellationToken cancellationToken)
+    private async Task<bool> OmdbMovieDetails(Movie movie, bool idsOnly, CancellationToken cancellationToken)
     {
         if (movie.ImdbId == null)
             return false;
 
         movie.ImdbUrl = GetImdbUri(movie.ImdbId).ToString();
 
-        if (movie.Title != null && movie.Year.HasValue)
+        if (idsOnly && movie.Title != null && movie.Year.HasValue)
             return false;
 
         bool changed = false;
@@ -907,6 +928,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             var omdbClient = _clientFactory.GetOMDbClient();
             var response = await omdbClient.GetMovieByIdAsync(movie.ImdbId, true, cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
+            if (response.Data is null)
+                return false;
 
             if (movie.Title == null)
             {
@@ -923,6 +946,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
             if (!idsOnly)
             {
+                movie.Overview ??= response.Data.Plot.ToNonEmpy();
                 movie.Genres = Coalesce(movie.Genres, response.Data!.Genre.SplitOmdbString());
                 movie.Cast = Coalesce(movie.Cast, response.Data.Actors.SplitOmdbString());
                 movie.Directors = Coalesce(movie.Directors, response.Data.Director.SplitOmdbString());
@@ -939,6 +963,177 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         return changed;
     }
 
+
+
+
+
+    private async Task<bool> ImdbMovieSearchByTitle(Query query, CancellationToken cancellationToken)
+    {
+        if (query.ImdbId != null)
+            return false;
+
+        if (query.Title == null || query.Year == null)
+            return false;
+
+        bool changed = false;
+        try
+        {
+            var parts = query.Title.SplitTitle(query.Year);
+
+            var imdbClient = _clientFactory.GetIMDBClient();
+            var response = await imdbClient.SearchTitleAsync(parts.Query, IMDB.Models.TitleTypes.Movie, query.Year, false, cancellationToken).ConfigureAwait(false);
+            response.ThrowIfError();
+
+            foreach (var item in response.Data ?? [])
+            {
+                string testTitle = item.Basic.PrimaryTitle.ToComparable(item.Basic.StartYear);
+                if (parts.ComparableTitle == testTitle)
+                {
+                    query.ImdbId = item.Basic.TConst.ToNonEmpy();
+                    changed |= query.ImdbId != null;
+                    break;
+                }
+
+                testTitle = item.Basic.OriginalTitle.ToComparable(item.Basic.StartYear);
+                if (parts.ComparableTitle == testTitle)
+                {
+                    query.ImdbId = item.Basic.TConst.ToNonEmpy();
+                    changed |= query.ImdbId != null;
+                    break;
+                }
+            }
+        }
+        catch { }
+        return changed;
+    }
+
+    private async Task<bool> ImdbMovieDetails(Movie movie, bool idsOnly, CancellationToken cancellationToken)
+    {
+        if (movie.ImdbId == null)
+            return false;
+
+        movie.ImdbUrl = GetImdbUri(movie.ImdbId).ToString();
+
+        if (idsOnly && movie.Title != null && movie.Year.HasValue)
+            return false;
+
+        bool changed = false;
+        try
+        {
+            var imdbClient = _clientFactory.GetIMDBClient();
+            var response = await imdbClient.GetTitleAsync(movie.ImdbId, cancellationToken).ConfigureAwait(false);
+            response.ThrowIfError();
+            if (response.Data is null)
+                return false;
+
+            if (movie.Title == null)
+            {
+                movie.Title = response.Data!.Basic.PrimaryTitle.ToNonEmpy();
+                changed |= movie.Title != null;
+            }
+
+            if (movie.Title == null)
+            {
+                movie.Title = response.Data!.Basic.OriginalTitle.ToNonEmpy();
+                changed |= movie.Title != null;
+            }
+
+            if (movie.ReleaseDate == null)
+            {
+                movie.ReleaseDate = response.Data.ExternalData?.Date;
+                changed |= movie.ReleaseDate != null;
+            }
+
+            if (!idsOnly)
+            {
+                movie.Overview ??= response.Data.ExternalData?.Plot.ToNonEmpy();
+                movie.Genres = Coalesce(movie.Genres, response.Data.Basic?.Genres);
+
+                if ((movie.Cast is null || movie.Cast.Count == 0) && response.Data.Principals is not null)
+                {
+                    var principals = response.Data.Principals.Where(_ => _.Job.ICContains("actor") || _.Job.ICContains("actress")).ToList();
+                    foreach (var principal in principals)
+                    {
+                        try
+                        {
+                            var personResponse = await imdbClient.GetPersonAsync(principal.NConst, cancellationToken).ConfigureAwait(false);
+                            personResponse.ThrowIfError();
+                            if (personResponse.Data!.PrimaryName.HasValue())
+                            {
+                                movie.Cast ??= [];
+                                movie.Cast.Add(personResponse.Data.PrimaryName);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                if ((movie.Directors is null || movie.Directors.Count == 0) && response.Data.Principals is not null)
+                {
+                    var principals = response.Data.Principals.Where(_ => _.Job.ICContains("director")).ToList();
+                    foreach (var principal in principals)
+                    {
+                        try
+                        {
+                            var personResponse = await imdbClient.GetPersonAsync(principal.NConst, cancellationToken).ConfigureAwait(false);
+                            personResponse.ThrowIfError();
+                            if (personResponse.Data!.PrimaryName.HasValue())
+                            {
+                                movie.Directors ??= [];
+                                movie.Directors.Add(personResponse.Data.PrimaryName);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                if ((movie.Producers is null || movie.Producers.Count == 0) && response.Data.Principals is not null)
+                {
+                    var principals = response.Data.Principals.Where(_ => _.Job.ICContains("producer")).ToList();
+                    foreach (var principal in principals)
+                    {
+                        try
+                        {
+                            var personResponse = await imdbClient.GetPersonAsync(principal.NConst, cancellationToken).ConfigureAwait(false);
+                            personResponse.ThrowIfError();
+                            if (personResponse.Data!.PrimaryName.HasValue())
+                            {
+                                movie.Producers ??= [];
+                                movie.Producers.Add(personResponse.Data.PrimaryName);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                if ((movie.Writers is null || movie.Writers.Count == 0) && response.Data.Principals is not null)
+                {
+                    var principals = response.Data.Principals.Where(_ => _.Job.ICContains("writer")).ToList();
+                    foreach (var principal in principals)
+                    {
+                        try
+                        {
+                            var personResponse = await imdbClient.GetPersonAsync(principal.NConst, cancellationToken).ConfigureAwait(false);
+                            personResponse.ThrowIfError();
+                            if (personResponse.Data!.PrimaryName.HasValue())
+                            {
+                                movie.Writers ??= [];
+                                movie.Writers.Add(personResponse.Data.PrimaryName);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                if (!movie.HasRating())
+                    movie.MovieRating = (response.Data.ExternalData?.MPAA_Rating + string.Empty).ToMovieRatings();
+
+                movie.PosterUrl ??= response.Data.ExternalData?.ImageUrl.ToNonEmpy();
+            }
+        }
+        catch { }
+        return changed;
+    }
 
     #endregion
 

@@ -1,18 +1,16 @@
 ﻿using DustyPig.API.v3.MPAA;
-using DustyPig.REST;
 using DustyPig.TVDB.Models;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using EpisodeAppend = DustyPig.TMDB.Models.TvEpisodes.AppendToResponse;
-using MovieAppend = DustyPig.TMDB.Models.Movies.AppendToResponse;
-using MovieReleaseTypes = DustyPig.TMDB.Models.Common.CommonReleaseTypes;
-using TvAppend = DustyPig.TMDB.Models.TvSeries.AppendToResponse;
+using EpisodeAppend = DustyPig.TMDB.Enums.TvEpisodeAppendToResponse;
+using MovieAppend = DustyPig.TMDB.Enums.MovieAppendToResponse;
+using MovieReleaseTypes = DustyPig.TMDB.Enums.ReleaseTypes;
+using TvAppend = DustyPig.TMDB.Enums.TvSeriesAppendToResponse;
 
 namespace DustyPig.MediaMetadata;
 
@@ -29,8 +27,12 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     public async Task<Movie> GetMovieMetadata(Query query, CancellationToken cancellationToken = default)
     {
         string? edition = null;
-        if (!query.Title.IsNullOrWhiteSpace())
-            edition = query.Title.SplitTitle(query.Year ?? 1900).ExtraTitle;
+        if (!string.IsNullOrWhiteSpace(query.Title))
+        {
+            var mt = MovieTitleAndEdition.Parse(query.Title);
+            query.Title = mt.Title;
+            edition = mt.Edition;
+        }
 
         query = await GetMovieIds(query, cancellationToken).ConfigureAwait(false);
         var ret = query.ToMovie();
@@ -73,7 +75,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             return ret;
 
         var titleSplit = title.SplitTitle(year);
-                
+
 
 
         // TMDB
@@ -122,7 +124,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 ret.TvdbResults = response.Data!;
             }
             catch { }
-        
+
         if (ret.TvdbResults is not null && ret.TvdbResults.Count == 0)
             ret.TvdbResults = null;
 
@@ -407,7 +409,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             var tmdbClient = _clientFactory.GetTMDBClient();
             var response = await tmdbClient.Endpoints.Find.ByIdAsync(query.TvdbId.ToString(), TMDB.Models.Find.Externalsource.TvdbId, cancellationToken: cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
-            return response.Data!.MovieResults.Where(_ => _.MediaType == TMDB.Models.Common.CommonMediaTypes.Movie).First().Process(query);
+            return response.Data!.MovieResults.First().Process(query);
         }
         catch { }
         return changed;
@@ -425,7 +427,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             var tmdbClient = _clientFactory.GetTMDBClient();
             var response = await tmdbClient.Endpoints.Find.ByIdAsync(query.ImdbId, TMDB.Models.Find.Externalsource.ImdbId, cancellationToken: cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
-            return response.Data!.MovieResults.Where(_ => _.MediaType == TMDB.Models.Common.CommonMediaTypes.Movie).First().Process(query);
+            return response.Data!.MovieResults.First().Process(query);
         }
         catch { }
         return changed;
@@ -580,7 +582,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                     movie.Writers = Coalesce(writers.ToNonEmpty(), movie.Writers);
 
 
-                    response.Data.Images ??= new TMDB.Models.Common.CommonImages2();
+                    response.Data.Images ??= new();
                     response.Data.Images.Posters ??= [];
                     response.Data.Images.Backdrops ??= [];
                     bool posterWasSet = false;
@@ -767,7 +769,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             var response = await tvdbClient.Movies.GetExtendedAsync(movie.TvdbId.Value, true, false, cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
 
-            if(response.Data.Slug.HasValue())
+            if (response.Data.Slug.HasValue())
             {
                 movie.TvdbSlug = response.Data.Slug;
                 movie.TvdbUrl = GetTvdbMovieUri(movie.TvdbSlug).ToString();
@@ -1193,7 +1195,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         //If no results search again without the year
         ret.TvdbResults ??= [];
-        if(ret.TvdbResults.Count == 0 && year.HasValue)
+        if (ret.TvdbResults.Count == 0 && year.HasValue)
             try
             {
                 var client = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
@@ -1218,7 +1220,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         //If no results search again without the year
         ret.TmdbResults ??= [];
-        if(ret.TmdbResults.Count == 0 && year.HasValue)
+        if (ret.TmdbResults.Count == 0 && year.HasValue)
             try
             {
                 var client = _clientFactory.GetTMDBClient();
@@ -1243,7 +1245,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         //If no results search again without the year
         ret.ImdbResults ??= [];
-        if(ret.ImdbResults.Count == 0 && year.HasValue)
+        if (ret.ImdbResults.Count == 0 && year.HasValue)
             try
             {
                 var client = _clientFactory.GetOMDbClient();
@@ -1605,18 +1607,18 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (series.TvdbId == null)
             return false;
 
-        
+
         bool changed = false;
         try
         {
             series.TvdbUrl = GetTvdbSeriesUri(series.TvdbId.Value).ToString();
-            
+
             var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
             var response = await tvdbClient.Series.GetExtendedAsync(series.TvdbId.Value, Meta.Translations, false, cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
 
             series.TvdbSlug = response.Data.Slug;
-            if(series.TvdbSlug.HasValue())
+            if (series.TvdbSlug.HasValue())
                 series.TvdbUrl = GetTvdbSeriesUri(series.TvdbSlug).ToString();
 
             response.Data.Translations ??= new();
@@ -1758,7 +1760,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             var tmdbClient = _clientFactory.GetTMDBClient();
             var response = await tmdbClient.Endpoints.Find.ByIdAsync(query.ImdbId, TMDB.Models.Find.Externalsource.ImdbId, cancellationToken: cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
-            return response.Data!.TvResults.Where(_ => _.MediaType == TMDB.Models.Common.CommonMediaTypes.TvSeries).First().Process(query);
+            return response.Data!.TvResults.First().Process(query);
         }
         catch { }
         return changed;
@@ -1776,7 +1778,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             var tmdbClient = _clientFactory.GetTMDBClient();
             var response = await tmdbClient.Endpoints.Find.ByIdAsync(query.TvdbId.ToString(), TMDB.Models.Find.Externalsource.TvdbId, cancellationToken: cancellationToken).ConfigureAwait(false);
             response.ThrowIfError();
-            return response.Data!.MovieResults.Where(_ => _.MediaType == TMDB.Models.Common.CommonMediaTypes.TvSeries).First().Process(query);
+            return response.Data!.MovieResults.First().Process(query);
         }
         catch { }
         return changed;
@@ -1815,7 +1817,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             response.Data.Translations.Translations ??= [];
             if (series.Title == null)
             {
-                series.Title = Coalesce(response.Data.Translations.Translations.Where(_ => _.LanguageCode.ICEquals("en")).FirstOrDefault()?.Data.Name?.ToNonEmpy(), response.Data.Name.ToNonEmpy());
+                series.Title = Coalesce(response.Data.Translations.Translations.Where(_ => _.LanguageCode.ICEquals("en")).FirstOrDefault()?.Data.Title?.ToNonEmpy(), response.Data.Name.ToNonEmpy());
                 changed = series.Title != null;
             }
 
@@ -1854,7 +1856,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 {
 
                     //If no english images, check for any language
-                    response.Data.Images ??= new TMDB.Models.Common.CommonImages2();
+                    response.Data.Images ??= new();
                     response.Data.Images.Posters ??= [];
                     response.Data.Images.Backdrops ??= [];
 
@@ -1992,7 +1994,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         if (eps.Data.Series?.Slug.HasValue() ?? false)
             ret.TvdbUrl = GetTvdbEpisodeUri(eps.Data.Series.Slug, ep.Id).ToString();
 
-        
+
 
         return ret;
     }
@@ -2005,7 +2007,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         var tvdbClient = await _clientFactory.GetTVDBClient(cancellationToken).ConfigureAwait(false);
         var ret = await GetEpisode(tvdbClient, episodeTvdbId, cancellationToken).ConfigureAwait(false);
-        
+
         if (ret.SeriesImdbId.ToNonEmpy() is null)
             ret.SeriesImdbId = query.ImdbId.ToNonEmpy();
         if (ret.SeriesTmdbId.ToNumericId() is null)
@@ -2372,10 +2374,10 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             //TmdbId = ids.TmdbId,
             //TmdbUrl = ids.TmdbId.HasValue && response.Data.SeasonNumber.HasValue && response.Data.Number.HasValue ? GetTmdbEpisodeUri(ids.TmdbId.Value, response.Data.SeasonNumber.Value, response.Data.Number.Value).ToString() : null,
             TvdbId = response.Data.Id,
-            TvdbUrl = GetTvdbEpisodeUri(response.Data.Id).ToString(), 
+            TvdbUrl = GetTvdbEpisodeUri(response.Data.Id).ToString(),
             SeriesTvdbId = response.Data.SeriesId
         };
-       
+
         if (DateOnly.TryParse(response.Data.Aired, out DateOnly dt))
             ret.FirstAired = dt;
 
@@ -2401,9 +2403,9 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
         var tvdbSeriesResponse = await tvdbClient.Series.GetExtendedAsync(query.TvdbId.Value, null, true, cancellationToken).ConfigureAwait(false);
         tvdbSeriesResponse.ThrowIfError();
-                
+
         var ids = tvdbSeriesResponse.Data.RemoteIds.Process();
-        
+
         string tvdbUrl = tvdbSeriesResponse.Data.Slug.HasValue() ? $"https://thetvdb.com/series/{tvdbSeriesResponse.Data.Slug}/episodes/" : $"https://thetvdb.com/dereferrer/episode/";
 
         List<EpisodeBaseRecord> tvdbEpisodes = [];
@@ -2418,7 +2420,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
         }
 
         var ret = new List<Episode>();
-        foreach(var tvdbEpisode in tvdbEpisodes)
+        foreach (var tvdbEpisode in tvdbEpisodes)
         {
             var episode = new Episode
             {
@@ -2434,7 +2436,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
                 TvdbUrl = tvdbUrl + tvdbEpisode.Id.ToString(),
                 TmdbUrl = ids.TmdbId.HasValue && tvdbEpisode.SeasonNumber.HasValue && tvdbEpisode.Number.HasValue ? GetTmdbEpisodeUri(ids.TmdbId.Value, tvdbEpisode.SeasonNumber.Value, tvdbEpisode.Number.Value).ToString() : null,
             };
-            
+
             if (!tvdbEpisode.Aired.IsNullOrWhiteSpace())
                 if (DateOnly.TryParse(tvdbEpisode.Aired, out DateOnly dt))
                     episode.FirstAired = dt;
@@ -2442,7 +2444,7 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
             ret.Add(episode);
         }
 
-        
+
         return ret;
     }
 
@@ -2512,10 +2514,10 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
     public static Uri GetTvdbSeriesSearchUri(string search) => new("https://thetvdb.com/search?menu%5Btype%5D=series&query=" + Uri.EscapeDataString(search));
 
     public static Uri GetTvdbMovieSearchUri(string search) => new("https://thetvdb.com/search?menu%5Btype%5D=movie&query=" + Uri.EscapeDataString(search));
-    
+
     public static Uri GetTvdbSeriesUri(int id) => new($"https://thetvdb.com/dereferrer/series/{id}");
 
-    public static  Uri GetTvdbMovieUri (int id) => new($"https://thetvdb.com/dereferrer/movie/{id}");
+    public static Uri GetTvdbMovieUri(int id) => new($"https://thetvdb.com/dereferrer/movie/{id}");
 
     public static Uri GetTvdbSeriesUri(string slug) => new($"https://thetvdb.com/series/{slug}");
 

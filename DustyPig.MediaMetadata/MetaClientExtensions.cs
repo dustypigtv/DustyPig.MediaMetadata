@@ -15,7 +15,6 @@ internal static partial class MetaClientExtensions
     [GeneratedRegex("[^a-z0-9]")]
     private static partial Regex ComparableTitleRegex();
 
-
     public static List<T>? ToNonEmpty<T>(this List<T>? lst) => lst == null || lst.Count == 0 ? null : lst;
 
     public static int? ToYear(this int? value) => value.HasValue && value.Value > 1900 ? value.Value : null;
@@ -91,70 +90,19 @@ internal static partial class MetaClientExtensions
         return s.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(_ => _.Trim()).Distinct().Order().ToList().ToNonEmpty();
     }
 
-    public static string? GetMovieExtraTitle(this string title)
-    {
-        try
-        {
-            title = title.Trim();
-
-            var editions = new string[]
-            {
-                "(unrated)",
-                "(unrated edition)",
-                "(extreme unrated)",
-            };
-            foreach (string edition in editions)
-                if (title.ICEndsWith(edition))
-                    return title[(title.Length - edition.Length - 1)..];
-
-
-            editions =
-            [
-                "(unrated director's cut)",
-                "(unrated directors cut)"
-            ];
-            foreach (string edition in editions)
-                if (title.ICEndsWith(edition))
-                    return title[(title.Length - edition.Length - 1)..];
-
-            editions =
-            [
-                "(director's cut)",
-                "(directors cut)",
-                "(extended cut)",
-                "(extended edition)",
-                "(extended version)",
-                "(extended)",
-                "(uncut)",
-                "(special edition)",
-                "(theatrical edition)",
-                "(theatrical version)",
-                "(theatrical release)",
-                "(remastered)"
-            ];
-            foreach (string edition in editions)
-                if (title.ICEndsWith(edition))
-                    return title[(title.Length - edition.Length - 1)..];
-        }
-        catch { }
-
-        return null;
-    }
-
-    public static (string Query, string ComparableTitle, string? ExtraTitle) SplitTitle(this string? title, int? year)
+    public static (string Query, string ComparableTitle, string? Edition) SplitTitle(this string? title, int? year)
     {
         if (title.IsNullOrWhiteSpace())
             throw new Exception();
 
-        string? extraTitle = title.GetMovieExtraTitle();
-        if (!extraTitle.IsNullOrWhiteSpace())
-            title = title[..^extraTitle.Length].Trim();
+        var mt = MovieTitleAndEdition.Parse(title);
+        title = mt.Title;
 
         string query = title.ToQuery();
 
         title = title.ToComparable(year);
 
-        return (query, title, extraTitle);
+        return (query, title, mt.Edition);
     }
 
 
@@ -345,13 +293,16 @@ internal static partial class MetaClientExtensions
         if (episode.Cast == null) return false;
         if (episode.Directors == null) return false;
         if (episode.FirstAired == null) return false;
+        if (episode.SeriesImdbId == null) return false;
         if (episode.ImdbId == null) return false;
         if (episode.ImdbUrl == null) return false;
         if (episode.Overview == null) return false;
         //if (episode.Producers == null) return false;
         if (episode.Title == null) return false;
+        if (episode.SeriesTmdbId == null) return false;
         if (episode.TmdbId == null) return false;
         if (episode.TmdbUrl == null) return false;
+        if (episode.SeriesTvdbId == null) return false;
         if (episode.TvdbId == null) return false;
         if (episode.TvdbUrl == null) return false;
         if (episode.Writers == null) return false;
@@ -359,7 +310,7 @@ internal static partial class MetaClientExtensions
     }
 
 
-    public static bool Process(this TMDB.Models.Find.FindMovieResult data, Query query)
+    public static bool Process(this TMDB.Models.Common.Movie data, Query query)
     {
         bool changed = false;
         try
@@ -384,7 +335,7 @@ internal static partial class MetaClientExtensions
     }
 
 
-    public static bool Process(this TMDB.Models.Find.FindTvResult data, Query query)
+    public static bool Process(this TMDB.Models.Common.TvSeries data, Query query)
     {
         bool changed = false;
         try

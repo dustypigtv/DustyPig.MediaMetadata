@@ -21,7 +21,7 @@ public class ClientFactory(Configuration configuration, HttpClient? httpClient =
             IncludeRawContentInResponse = configuration.ApiClientsIncludeRawContentResponse,
             AutoThrowIfError = configuration.ApiClientsAutoThrowOnError
         };
-        ret.SetAuth(TMDB.Client.AuthTypes.APIKey, configuration.TMDBApiKey);
+        ret.SetAuth(TMDB.Enums.AuthTypes.APIKey, configuration.TMDBApiKey);
         return ret;
     }
 

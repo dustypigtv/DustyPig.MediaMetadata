@@ -1,5 +1,4 @@
 ﻿using DustyPig.MediaMetadata;
-using System.Diagnostics;
 
 namespace TestProject1;
 
@@ -29,7 +28,7 @@ public sealed class Test1
         Assert.AreEqual("tt0118276", response.ImdbId);
     }
 
-    
+
     [TestMethod]
     public async Task GetAllEpisodes()
     {
@@ -74,7 +73,7 @@ public sealed class Test1
     public async Task SearchMovies()
     {
         var response = await _metaClient.SearchMovies("The Avengers", 2012);
-        
+
         Assert.IsNotNull(response.TmdbResults);
         Assert.IsNotEmpty(response.TmdbResults);
 

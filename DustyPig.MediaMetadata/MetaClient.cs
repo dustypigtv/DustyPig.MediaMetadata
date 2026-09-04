@@ -26,6 +26,8 @@ public class MetaClient(Configuration configuration, HttpClient? httpClient = nu
 
     public async Task<Movie> GetMovieMetadata(Query query, CancellationToken cancellationToken = default)
     {
+        query = query.Copy();
+
         string? edition = null;
         if (!string.IsNullOrWhiteSpace(query.Title))
         {
